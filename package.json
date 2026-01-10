@@ -11,10 +11,17 @@
     "check": "biome check",
     "check:fix": "biome check --write",
     "prepare": "husky",
-    "generate:presets": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' src/scripts/generate-theme-presets.ts"
+    "generate:presets": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' src/scripts/generate-theme-presets.ts",
+    "mcp:dev": "cd mcp-server && npx tsx index.ts",
+    "mcp:build": "cd mcp-server && npx tsc",
+    "mcp:start": "cd mcp-server && node dist/index.js",
+    "mcp:test": "npx tsx mcp-server/test-client.ts",
+    "smoke:snapshot": "npx ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/smoke-run-snapshot.ts"
   },
   "lint-staged": {
-    "*.{js,ts,jsx,tsx}": ["biome check --write --no-errors-on-unmatched"]
+    "*.{js,ts,jsx,tsx}": [
+      "biome check --write --no-errors-on-unmatched"
+    ]
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -22,6 +29,9 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^3.10.0",
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.90.1",
     "@tanstack/react-query": "^5.90.16",
     "@tanstack/react-table": "^8.21.3",
     "axios": "^1.13.2",
@@ -34,6 +44,7 @@
     "lucide-react": "^0.562.0",
     "next": "^16.1.1",
     "next-themes": "^0.4.6",
+    "openai": "^6.16.0",
     "radix-ui": "^1.4.3",
     "react": "^19.2.3",
     "react-day-picker": "^9.13.0",

@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import type { Metadata } from "next";
 
 import { Toaster } from "@/components/ui/sonner";
-import { APP_CONFIG } from "@/config/app-config";
 import { fontVars } from "@/lib/fonts/registry";
 import { PREFERENCE_DEFAULTS } from "@/lib/preferences/preferences-config";
 import { ThemeBootScript } from "@/scripts/theme-boot";
@@ -12,8 +11,8 @@ import { PreferencesStoreProvider } from "@/stores/preferences/preferences-provi
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: APP_CONFIG.meta.title,
-  description: APP_CONFIG.meta.description,
+  title: "2ndlook",
+  description: "Connect & See — a decision snapshot from closed estimates.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

@@ -1,0 +1,12 @@
+# MCP Server Environment
+.env
+.env.local
+dist/
+node_modules/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
