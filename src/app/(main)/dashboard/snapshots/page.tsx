@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, ArrowRight } from "lucide-react";
 
@@ -14,7 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getInstallationId } from "@/lib/installations/cookie";
 import type { ConfidenceLevel } from "@/types/2ndlook";
 
 function getConfidenceBadgeVariant(level: ConfidenceLevel): "default" | "secondary" | "outline" {
@@ -42,24 +42,18 @@ function formatDate(dateString: string): string {
 }
 
 export default async function SnapshotsPage() {
-  const supabase = createClient();
-
-  // Verify auth
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  const installationId = await getInstallationId();
+  const supabase = createAdminClient();
 
   // Fetch recent snapshots
-  const { data: snapshots, error } = await supabase
-    .from("snapshots")
-    .select("id, generated_at, estimate_count, confidence_level, source_id")
-    .eq("user_id", user.id)
-    .order("generated_at", { ascending: false })
-    .limit(25);
+  const { data: snapshots, error } = installationId
+    ? await supabase
+        .from("snapshots")
+        .select("id, generated_at, estimate_count, confidence_level, source_id, sources!inner(installation_id)")
+        .eq("sources.installation_id", installationId)
+        .order("generated_at", { ascending: false })
+        .limit(25)
+    : { data: [], error: null };
 
   if (error) {
     return (
@@ -176,3 +170,5 @@ export default async function SnapshotsPage() {
     </div>
   );
 }
+
+

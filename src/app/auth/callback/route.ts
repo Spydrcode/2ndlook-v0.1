@@ -8,7 +8,7 @@ export async function GET(request: Request) {
 
   if (!code) return NextResponse.redirect(`${origin}/login`);
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
@@ -24,5 +24,5 @@ export async function GET(request: Request) {
   });
 
   await supabase.auth.exchangeCodeForSession(code);
-  return NextResponse.redirect(`${origin}/snapshot`);
+  return NextResponse.redirect(`${origin}/dashboard`);
 }

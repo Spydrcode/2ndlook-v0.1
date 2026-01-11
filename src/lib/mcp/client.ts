@@ -6,7 +6,7 @@
  * Server-only module - never import on client
  *
  * SAFETY:
- * - All tool calls scoped by user_id
+ * - All tool calls scoped by installation_id
  * - Timeouts prevent hanging
  * - No payload logging in production
  */
@@ -46,7 +46,7 @@ export interface BucketedAggregates {
 }
 
 export interface WriteSnapshotParams {
-  user_id: string;
+  installation_id: string;
   snapshot_id: string;
   result_json: unknown;
 }
@@ -145,11 +145,11 @@ export class MCPClient {
    * Returns bucket-only data (no raw estimates)
    */
   async getBucketedAggregates(
-    user_id: string,
+    installation_id: string,
     source_id: string
   ): Promise<BucketedAggregates> {
     return this.callTool<BucketedAggregates>("get_bucketed_aggregates", {
-      user_id,
+      installation_id,
       source_id,
     });
   }
@@ -164,15 +164,15 @@ export class MCPClient {
   /**
    * List user sources (optional - for debugging)
    */
-  async listSources(user_id: string, limit = 10): Promise<unknown[]> {
-    return this.callTool("list_sources", { user_id, limit });
+  async listSources(installation_id: string, limit = 10): Promise<unknown[]> {
+    return this.callTool("list_sources", { installation_id, limit });
   }
 
   /**
    * List user snapshots (optional - for debugging)
    */
-  async listSnapshots(user_id: string, limit = 10): Promise<unknown[]> {
-    return this.callTool("list_snapshots", { user_id, limit });
+  async listSnapshots(installation_id: string, limit = 10): Promise<unknown[]> {
+    return this.callTool("list_snapshots", { installation_id, limit });
   }
 }
 

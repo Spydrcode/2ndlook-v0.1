@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 
@@ -7,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getInstallationId } from "@/lib/installations/cookie";
 import type { SnapshotResult, ConfidenceLevel } from "@/types/2ndlook";
 
 interface ResultsPageProps {
@@ -41,25 +41,19 @@ function formatDate(dateString: string): string {
 }
 
 export default async function ResultsPage({ params }: ResultsPageProps) {
-  const supabase = createClient();
+  const installationId = await getInstallationId();
+  const supabase = createAdminClient();
   const snapshotId = params.id;
 
-  // Verify auth
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
   // Fetch snapshot
-  const { data: snapshot, error } = await supabase
-    .from("snapshots")
-    .select("*")
-    .eq("id", snapshotId)
-    .eq("user_id", user.id)
-    .single();
+  const { data: snapshot, error } = installationId
+    ? await supabase
+        .from("snapshots")
+        .select("*, sources!inner(installation_id)")
+        .eq("id", snapshotId)
+        .eq("sources.installation_id", installationId)
+        .single()
+    : { data: null, error: null };
 
   if (error || !snapshot) {
     return (
@@ -208,3 +202,4 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
     </div>
   );
 }
+

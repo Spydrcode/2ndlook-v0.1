@@ -25,7 +25,7 @@ import type {
  * 
  * SAFETY RULES:
  * 1. Never exposes raw estimate rows
- * 2. All access scoped to user_id
+ * 2. All access scoped to installation_id
  * 3. Small, bounded payloads
  * 4. Server-side only (service role key)
  */
@@ -58,16 +58,16 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        user_id: {
+        installation_id: {
           type: "string",
-          description: "User ID (UUID) for access control",
+          description: "Installation ID (UUID) for access control",
         },
         source_id: {
           type: "string",
           description: "Source ID (UUID) to get buckets for",
         },
       },
-      required: ["user_id", "source_id"],
+      required: ["installation_id", "source_id"],
     },
   },
   {
@@ -77,9 +77,9 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        user_id: {
+        installation_id: {
           type: "string",
-          description: "User ID (UUID) for access control",
+          description: "Installation ID (UUID) for access control",
         },
         snapshot_id: {
           type: "string",
@@ -90,7 +90,7 @@ const TOOLS: Tool[] = [
           description: "SnapshotResult object matching the locked schema",
         },
       },
-      required: ["user_id", "snapshot_id", "result_json"],
+      required: ["installation_id", "snapshot_id", "result_json"],
     },
   },
   {
@@ -100,9 +100,9 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        user_id: {
+        installation_id: {
           type: "string",
-          description: "User ID (UUID) to list snapshots for",
+          description: "Installation ID (UUID) to list snapshots for",
         },
         limit: {
           type: "number",
@@ -110,7 +110,7 @@ const TOOLS: Tool[] = [
           default: 10,
         },
       },
-      required: ["user_id"],
+      required: ["installation_id"],
     },
   },
   {
@@ -120,9 +120,9 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        user_id: {
+        installation_id: {
           type: "string",
-          description: "User ID (UUID) to list sources for",
+          description: "Installation ID (UUID) to list sources for",
         },
         limit: {
           type: "number",
@@ -130,14 +130,14 @@ const TOOLS: Tool[] = [
           default: 10,
         },
       },
-      required: ["user_id"],
+      required: ["installation_id"],
     },
   },
 ];
 
 // Tool handlers
 async function handleGetBucketedAggregates(args: {
-  user_id: string;
+  installation_id: string;
   source_id: string;
 }) {
   const supabase = getSupabaseClient();
@@ -145,9 +145,9 @@ async function handleGetBucketedAggregates(args: {
   // Verify source ownership
   const { data: source, error: sourceError } = await supabase
     .from("sources")
-    .select("id, user_id, status")
+    .select("id, installation_id, status")
     .eq("id", args.source_id)
-    .eq("user_id", args.user_id)
+    .eq("installation_id", args.installation_id)
     .single();
 
   if (sourceError || !source) {
@@ -249,7 +249,7 @@ async function handleGetBucketedAggregates(args: {
 }
 
 async function handleWriteSnapshotResult(args: {
-  user_id: string;
+  installation_id: string;
   snapshot_id: string;
   result_json: SnapshotResult;
 }) {
@@ -258,9 +258,9 @@ async function handleWriteSnapshotResult(args: {
   // Verify snapshot ownership
   const { data: snapshot, error: snapshotError } = await supabase
     .from("snapshots")
-    .select("id, user_id")
+    .select("id, source_id, sources!inner(installation_id)")
     .eq("id", args.snapshot_id)
-    .eq("user_id", args.user_id)
+    .eq("sources.installation_id", args.installation_id)
     .single();
 
   if (snapshotError || !snapshot) {
@@ -285,14 +285,14 @@ async function handleWriteSnapshotResult(args: {
   };
 }
 
-async function handleListSnapshots(args: { user_id: string; limit?: number }) {
+async function handleListSnapshots(args: { installation_id: string; limit?: number }) {
   const supabase = getSupabaseClient();
   const limit = Math.min(args.limit || 10, 50);
 
   const { data: snapshots, error } = await supabase
     .from("snapshots")
-    .select("id, source_id, estimate_count, confidence_level, generated_at")
-    .eq("user_id", args.user_id)
+    .select("id, source_id, estimate_count, confidence_level, generated_at, sources!inner(installation_id)")
+    .eq("sources.installation_id", args.installation_id)
     .order("generated_at", { ascending: false })
     .limit(limit);
 
@@ -301,7 +301,7 @@ async function handleListSnapshots(args: { user_id: string; limit?: number }) {
   }
 
   return {
-    user_id: args.user_id,
+    installation_id: args.installation_id,
     snapshots: (snapshots as Snapshot[]).map((s) => ({
       snapshot_id: s.id,
       source_id: s.source_id,
@@ -313,14 +313,14 @@ async function handleListSnapshots(args: { user_id: string; limit?: number }) {
   };
 }
 
-async function handleListSources(args: { user_id: string; limit?: number }) {
+async function handleListSources(args: { installation_id: string; limit?: number }) {
   const supabase = getSupabaseClient();
   const limit = Math.min(args.limit || 10, 50);
 
   const { data: sources, error } = await supabase
     .from("sources")
     .select("id, source_type, source_name, status, created_at")
-    .eq("user_id", args.user_id)
+    .eq("installation_id", args.installation_id)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -329,7 +329,7 @@ async function handleListSources(args: { user_id: string; limit?: number }) {
   }
 
   return {
-    user_id: args.user_id,
+    installation_id: args.installation_id,
     sources: (sources as Source[]).map((s) => ({
       source_id: s.id,
       source_type: s.source_type,
@@ -368,7 +368,7 @@ async function main() {
       switch (name) {
         case "get_bucketed_aggregates": {
           const result = await handleGetBucketedAggregates(
-            args as { user_id: string; source_id: string }
+            args as { installation_id: string; source_id: string }
           );
           return {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -378,7 +378,7 @@ async function main() {
         case "write_snapshot_result": {
           const result = await handleWriteSnapshotResult(
             args as {
-              user_id: string;
+              installation_id: string;
               snapshot_id: string;
               result_json: SnapshotResult;
             }
@@ -390,7 +390,7 @@ async function main() {
 
         case "list_snapshots": {
           const result = await handleListSnapshots(
-            args as { user_id: string; limit?: number }
+            args as { installation_id: string; limit?: number }
           );
           return {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -399,7 +399,7 @@ async function main() {
 
         case "list_sources": {
           const result = await handleListSources(
-            args as { user_id: string; limit?: number }
+            args as { installation_id: string; limit?: number }
           );
           return {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

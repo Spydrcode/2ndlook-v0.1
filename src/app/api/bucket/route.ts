@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getOrCreateInstallationId } from "@/lib/installations/cookie";
 import type { BucketRequest, BucketResponse, EstimateNormalized } from "@/types/2ndlook";
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
-
-    // Verify auth
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const installationId = await getOrCreateInstallationId();
+    const supabase = createAdminClient();
 
     const body: BucketRequest = await request.json();
     const { source_id } = body;
@@ -27,11 +21,11 @@ export async function POST(request: NextRequest) {
     // Verify source ownership and status
     const { data: source, error: sourceError } = await supabase
       .from("sources")
-      .select("id, user_id, status")
+      .select("id, installation_id, status")
       .eq("id", source_id)
       .single();
 
-    if (sourceError || !source || source.user_id !== user.id) {
+    if (sourceError || !source || source.installation_id !== installationId) {
       return NextResponse.json({ error: "Invalid source_id" }, { status: 403 });
     }
 
@@ -189,3 +183,5 @@ function getISOWeek(date: Date): string {
   const year = target.getFullYear();
   return `${year}-W${String(weekNumber).padStart(2, "0")}`;
 }
+
+

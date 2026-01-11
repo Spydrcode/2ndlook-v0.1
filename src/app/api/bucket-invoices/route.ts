@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getOrCreateInstallationId } from "@/lib/installations/cookie";
 import type { InvoiceNormalized, InvoiceBucket } from "@/types/2ndlook";
 
 interface BucketInvoicesRequest {
@@ -14,15 +15,8 @@ interface BucketInvoicesResponse {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
-
-    // Verify auth
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const installationId = await getOrCreateInstallationId();
+    const supabase = createAdminClient();
 
     const body: BucketInvoicesRequest = await request.json();
     const { source_id } = body;
@@ -37,11 +31,11 @@ export async function POST(request: NextRequest) {
     // Verify source ownership
     const { data: source, error: sourceError } = await supabase
       .from("sources")
-      .select("id, user_id")
+      .select("id, installation_id")
       .eq("id", source_id)
       .single();
 
-    if (sourceError || !source || source.user_id !== user.id) {
+    if (sourceError || !source || source.installation_id !== installationId) {
       return NextResponse.json({ error: "Invalid source_id" }, { status: 403 });
     }
 
@@ -260,3 +254,5 @@ function getISOWeek(date: Date): number {
   const diff = target.getTime() - firstThursday.getTime();
   return 1 + Math.floor(diff / 604800000);
 }
+
+

@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { FileUp, Calendar, Users, ChevronDown, ChevronUp, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FileUp, Calendar, Users, ChevronDown, ChevronUp, ChevronRight, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Connector {
   name: string;
@@ -78,13 +79,52 @@ const CRM_SECONDARY: Connector[] = [
 
 export default function ConnectPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [showMoreEstimates, setShowMoreEstimates] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showMoreCalendar, setShowMoreCalendar] = useState(false);
   const [showCRM, setShowCRM] = useState(false);
   const [showMoreCRM, setShowMoreCRM] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Check for error parameter in URL
+  useEffect(() => {
+    const errorParam = searchParams.get("error");
+    if (errorParam) {
+      setError(errorParam);
+    }
+  }, [searchParams]);
+
+  const getErrorMessage = (errorCode: string): string => {
+    const errorMessages: Record<string, string> = {
+      oauth_config_missing: "Jobber OAuth is not configured. Please contact your administrator to set up JOBBER_CLIENT_ID and JOBBER_REDIRECT_URI.",
+      oauth_start_failed: "Failed to start OAuth flow. Please try again.",
+      jobber_state_mismatch: "Security validation failed. Please try connecting again.",
+      jobber_missing_code: "Authorization code was not received from Jobber. Please try again.",
+      jobber_oauth_failed: "Jobber authorization failed. Please check your permissions and try again.",
+      jobber_token_exchange_failed: "Failed to exchange authorization code for tokens. Please try again.",
+      jobber_invalid_tokens: "Invalid tokens received from Jobber. Please try again.",
+      jobber_db_error: "Failed to save connection details. Please try again.",
+      jobber_ingest_failed: "Failed to fetch your estimates from Jobber. Please try again.",
+      jobber_min_estimates: "Minimum 25 closed estimates required. Jobber returned fewer than 25 closed/accepted estimates from the last 90 days.",
+      jobber_config_error: "OAuth configuration error. Please contact support.",
+      jobber_unexpected_error: "An unexpected error occurred. Please try again.",
+    };
+
+    return errorMessages[errorCode] || "An error occurred connecting your account.";
+  };
 
   const handleConnect = (tool: string) => {
+    // Clear any existing errors
+    setError(null);
+    
+    // OAuth-based connectors redirect to OAuth flow
+    if (tool === "jobber") {
+      window.location.href = "/api/oauth/jobber/start";
+      return;
+    }
+    
+    // File-based connectors go to import page
     router.push(`/dashboard/import?category=estimates&tool=${tool}`);
   };
 
@@ -99,6 +139,23 @@ export default function ConnectPage() {
           Closed estimates only. No customer or line-item details.
         </p>
       </div>
+
+      {/* Error Alert */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription className="flex items-center justify-between">
+            <span>{getErrorMessage(error)}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setError(null)}
+              className="h-auto p-0 hover:bg-transparent"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* ESTIMATES (PRIMARY - ALWAYS EXPANDED) */}
       <div className="space-y-4">

@@ -1,7 +1,8 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { runSnapshotOrchestrator } from "@/lib/orchestrator/runSnapshot";
+import { getOrCreateInstallationId } from "@/lib/installations/cookie";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * Server action to generate a snapshot using the orchestrator
@@ -25,21 +26,23 @@ export async function generateSnapshotAction(sourceId: string): Promise<
   | { snapshot_id?: never; error: string }
 > {
   try {
-    const supabase = createClient();
+    const installationId = await getOrCreateInstallationId();
+    const supabase = createAdminClient();
 
-    // Verify authentication
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: source, error: sourceError } = await supabase
+      .from("sources")
+      .select("id, installation_id")
+      .eq("id", sourceId)
+      .single();
 
-    if (!user) {
-      return { error: "Unauthorized" };
+    if (sourceError || !source || source.installation_id !== installationId) {
+      return { error: "Invalid source_id" };
     }
 
     // Run the orchestrator pipeline
     const result = await runSnapshotOrchestrator({
       source_id: sourceId,
-      user_id: user.id,
+      installation_id: installationId,
     });
 
     return { snapshot_id: result.snapshot_id };
@@ -53,3 +56,5 @@ export async function generateSnapshotAction(sourceId: string): Promise<
     };
   }
 }
+
+

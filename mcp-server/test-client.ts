@@ -47,15 +47,15 @@ async function main() {
   }
   console.log();
 
-  // Example: List sources for a user
-  console.log("🔍 Example: Listing sources for a user...");
+  // Example: List sources for an installation
+  console.log("🔍 Example: Listing sources for an installation...");
   console.log("(This will fail if you don't have test data - that's expected)\n");
 
   try {
     const result = await client.callTool({
       name: "list_sources",
       arguments: {
-        user_id: "00000000-0000-0000-0000-000000000000", // Replace with real user_id
+        installation_id: "00000000-0000-0000-0000-000000000000", // Replace with real installation_id
         limit: 5,
       },
     });
@@ -70,7 +70,7 @@ async function main() {
 
   console.log("\n✨ Test complete!");
   console.log("\nNext steps:");
-  console.log("1. Add real user_id to test-client.ts");
+  console.log("1. Add real installation_id to test-client.ts");
   console.log("2. Create test data in Supabase");
   console.log("3. Try calling other tools (get_bucketed_aggregates, etc.)");
   console.log("4. Use MCP Inspector for interactive testing:");
@@ -86,3 +86,4 @@ main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);
 });
+

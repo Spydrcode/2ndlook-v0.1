@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSnapshotResult } from "@/lib/ai/openaiClient";
 import { createMCPClient } from "@/lib/mcp/client";
 import {
@@ -27,7 +27,7 @@ import type { SnapshotResult } from "@/types/2ndlook";
 
 export interface RunSnapshotParams {
   source_id: string;
-  user_id: string;
+  installation_id: string;
 }
 
 export interface RunSnapshotResult {
@@ -51,9 +51,9 @@ export interface RunSnapshotResult {
 export async function runSnapshotOrchestrator(
   params: RunSnapshotParams
 ): Promise<RunSnapshotResult> {
-  const { source_id, user_id } = params;
+  const { source_id, installation_id } = params;
 
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const mcp = createMCPClient();
 
   // Step 1: Create snapshot record first (to get snapshot_id)
@@ -61,7 +61,6 @@ export async function runSnapshotOrchestrator(
     .from("snapshots")
     .insert({
       source_id,
-      user_id,
       estimate_count: 0, // Will be updated
       confidence_level: "low", // Will be updated
       result: {}, // Will be updated with full result
@@ -84,7 +83,7 @@ export async function runSnapshotOrchestrator(
       snapshot_id,
     });
 
-    const aggregates = await mcp.getBucketedAggregates(user_id, source_id);
+    const aggregates = await mcp.getBucketedAggregates(installation_id, source_id);
 
     // Validate aggregates structure
     validateBucketedAggregates(aggregates);
@@ -169,7 +168,7 @@ export async function runSnapshotOrchestrator(
     });
 
     await mcp.writeSnapshotResult({
-      user_id,
+      installation_id,
       snapshot_id,
       result_json: snapshotResult,
     });
@@ -215,3 +214,5 @@ export async function runSnapshotOrchestrator(
     );
   }
 }
+
+

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type {
   EstimateBucket,
   ConfidenceLevel,
@@ -65,20 +65,19 @@ export function generateDeterministicSnapshot(
  */
 export async function runDeterministicSnapshot(params: {
   source_id: string;
-  user_id: string;
+  installation_id: string;
 }): Promise<{ snapshot_id: string }> {
-  const { source_id, user_id } = params;
-  const supabase = createClient();
+  const { source_id, installation_id } = params;
+  const supabase = createAdminClient();
 
   // Verify source ownership and status
   const { data: source, error: sourceError } = await supabase
     .from("sources")
-    .select("id, user_id, status")
+    .select("id, installation_id, status")
     .eq("id", source_id)
-    .eq("user_id", user_id)
     .single();
 
-  if (sourceError || !source) {
+  if (sourceError || !source || source.installation_id !== installation_id) {
     throw new Error(`Invalid source_id: ${sourceError?.message || "not found"}`);
   }
 
@@ -128,7 +127,6 @@ export async function runDeterministicSnapshot(params: {
     .from("snapshots")
     .insert({
       source_id,
-      user_id,
       estimate_count: estimateCount,
       confidence_level: confidenceLevel,
       result: snapshotResult,
@@ -164,3 +162,5 @@ export async function runDeterministicSnapshot(params: {
     snapshot_id: snapshot.id,
   };
 }
+
+

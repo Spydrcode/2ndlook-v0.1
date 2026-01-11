@@ -1,30 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getOrCreateInstallationId } from "@/lib/installations/cookie";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { source_id: string } }
+  { params }: { params: Promise<{ source_id: string }> }
 ) {
   try {
-    const supabase = createClient();
+    const installationId = await getOrCreateInstallationId();
+    const supabase = createAdminClient();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { source_id } = params;
+    const { source_id } = await params;
 
     // Verify source ownership
     const { data: source, error: sourceError } = await supabase
       .from("sources")
-      .select("id, user_id")
+      .select("id, installation_id")
       .eq("id", source_id)
       .single();
 
-    if (sourceError || !source || source.user_id !== user.id) {
+    if (sourceError || !source || source.installation_id !== installationId) {
       return NextResponse.json({ error: "Invalid source_id" }, { status: 403 });
     }
 
@@ -51,3 +46,4 @@ export async function GET(
     );
   }
 }
+
