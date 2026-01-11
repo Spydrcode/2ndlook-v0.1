@@ -73,13 +73,26 @@ export async function fetchClosedEstimates(
   console.log("[JOBBER GRAPHQL] Response OK, parsing data...");
 
   const result = await response.json();
+  
+  // === RAW RESPONSE DEBUG LOGGING ===
+  console.log("[JOBBER RAW RESPONSE] Status:", response.status);
+  console.log("[JOBBER RAW RESPONSE] Full JSON:", JSON.stringify(result, null, 2));
+  console.log("[JOBBER RAW RESPONSE] Has errors?", !!result.errors);
+  console.log("[JOBBER RAW RESPONSE] data.quotes exists?", !!result.data?.quotes);
+  console.log("[JOBBER RAW RESPONSE] data.quotes structure:", Object.keys(result.data?.quotes || {}));
+  // === END DEBUG LOGGING ===
 
   if (result.errors) {
-    console.error("GraphQL errors:", result.errors);
-    throw new Error("GraphQL query failed");
+    console.error("[JOBBER GRAPHQL] GraphQL errors:", JSON.stringify(result.errors, null, 2));
+    throw new Error("GraphQL query failed: " + JSON.stringify(result.errors));
   }
 
   const quotes = (result.data?.quotes?.nodes || []) as JobberQuote[];
+  
+  console.log("[JOBBER RAW RESPONSE] Total quotes found:", quotes.length);
+  if (quotes.length > 0) {
+    console.log("[JOBBER RAW RESPONSE] First quote sample:", JSON.stringify(quotes[0], null, 2));
+  }
 
   // Map to CSVEstimateRow format and filter for closed/accepted
   const estimateRows: CSVEstimateRow[] = quotes
@@ -99,6 +112,12 @@ export async function fetchClosedEstimates(
       status: normalizeJobberStatus(quote.status),
       job_type: undefined, // Jobber doesn't provide job_type in field diet
     }));
+
+  console.log("[JOBBER GRAPHQL] After filtering - estimateRows count:", estimateRows.length);
+  if (estimateRows.length > 0) {
+    console.log("[JOBBER GRAPHQL] First normalized estimate:", JSON.stringify(estimateRows[0], null, 2));
+  }
+  console.log("[JOBBER GRAPHQL] Returning estimates to caller");
 
   return estimateRows;
 }

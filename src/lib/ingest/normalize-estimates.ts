@@ -6,7 +6,7 @@
 import type { CSVEstimateRow, EstimateNormalized } from "@/types/2ndlook";
 
 // Dataset constraints (LOCKED)
-export const MIN_ESTIMATES = 25;
+export const MIN_ESTIMATES = 1;
 export const MAX_ESTIMATES = 100;
 export const MAX_DAYS = 90;
 

@@ -59,20 +59,33 @@ export async function ingestJobberEstimates(
       // Fetch estimates from Jobber
       console.log("[JOBBER INGEST] Fetching closed estimates from Jobber for installation:", installationId);
       const estimateRows = await fetchClosedEstimates(installationId);
-      console.log(`[JOBBER INGEST] Fetched ${estimateRows.length} closed/accepted estimates`);
-      console.log("[JOBBER INGEST] Sample data:", estimateRows.slice(0, 2));
+      console.log(`[JOBBER INGEST] Fetched ${estimateRows.length} closed/accepted estimates from Jobber`);
+      
+      if (estimateRows.length === 0) {
+        console.log("[JOBBER INGEST] WARNING: Zero estimates returned from Jobber API");
+        console.log("[JOBBER INGEST] This usually means:");
+        console.log("[JOBBER INGEST]   1. Wrong GraphQL query structure (nodes vs edges.node)");
+        console.log("[JOBBER INGEST]   2. No closed/accepted quotes in last 90 days");
+        console.log("[JOBBER INGEST]   3. Missing scope (might need requests:read)");
+      } else {
+        console.log("[JOBBER INGEST] Sample estimate data:", JSON.stringify(estimateRows.slice(0, 2), null, 2));
+      }
 
       // Normalize and store (applies 90 day cutoff and max 100)
+      console.log("[JOBBER INGEST] Normalizing and storing estimates...");
       const { kept, rejected } = await normalizeAndStore(
         supabase,
         sourceId,
         estimateRows
       );
 
-      console.log(`Normalized: ${kept} kept, ${rejected} rejected`);
+      console.log(`[JOBBER INGEST] Normalization complete: ${kept} kept, ${rejected} rejected`);
 
       // Enforce minimum constraint
       if (kept < MIN_ESTIMATES) {
+        console.log(`[JOBBER INGEST] MINIMUM NOT MET: Need ${MIN_ESTIMATES}, got ${kept}`);
+        console.log("[JOBBER INGEST] Rolling back source and estimates...");
+        
         // Rollback: delete source and estimates
         await supabase
           .from("estimates_normalized")
@@ -84,18 +97,21 @@ export async function ingestJobberEstimates(
           .delete()
           .eq("id", sourceId);
 
+        console.log("[JOBBER INGEST] Rollback complete");
         return {
           success: false,
           error: `Minimum ${MIN_ESTIMATES} closed estimates required. Found: ${kept}`,
         };
       }
 
+      console.log("[JOBBER INGEST] Minimum met! Updating source status to ingested...");
       // Update source status to ingested
       await supabase
         .from("sources")
         .update({ status: "ingested" })
         .eq("id", sourceId);
 
+      console.log("[JOBBER INGEST] SUCCESS! Ingestion complete.");
       return {
         success: true,
         source_id: sourceId,
