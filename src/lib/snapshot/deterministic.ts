@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { MIN_CLOSED_ESTIMATES_PROD } from "@/lib/config/limits";
 import type {
   EstimateBucket,
   ConfidenceLevel,
@@ -107,8 +108,10 @@ export async function runDeterministicSnapshot(params: {
   }
 
   // Enforce minimum constraint
-  if (estimateCount < 25) {
-    throw new Error(`Minimum 25 estimates required for snapshot (found: ${estimateCount})`);
+  if (estimateCount < MIN_CLOSED_ESTIMATES_PROD) {
+    throw new Error(
+      `Minimum ${MIN_CLOSED_ESTIMATES_PROD} estimates required for snapshot (found: ${estimateCount})`
+    );
   }
 
   // Determine confidence level

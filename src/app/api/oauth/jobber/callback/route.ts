@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ingestJobberEstimates } from "@/lib/jobber/ingest";
+import { allowSmallDatasets, MIN_CLOSED_ESTIMATES_PROD } from "@/lib/config/limits";
 
 /**
  * OAuth Callback Route for Jobber
@@ -139,14 +140,15 @@ export async function GET(request: NextRequest) {
 
     if (!ingestionResult.success) {
       console.error("[JOBBER CALLBACK] Ingestion failed:", ingestionResult.error);
-      
-      // Check if it's a minimum estimates error
-      if (ingestionResult.error?.includes("Minimum")) {
+
+      if (ingestionResult.error_code === "insufficient_data") {
+        const count = ingestionResult.closed_estimates ?? 0;
+        const required = ingestionResult.required_min ?? MIN_CLOSED_ESTIMATES_PROD;
         return NextResponse.redirect(
-          `${appUrl}/dashboard/connect?error=jobber_min_estimates`
+          `${appUrl}/dashboard/connect?error=jobber_insufficient_data&count=${count}&required=${required}`
         );
       }
-      
+
       return NextResponse.redirect(
         `${appUrl}/dashboard/connect?error=jobber_ingest_failed`
       );
@@ -154,7 +156,16 @@ export async function GET(request: NextRequest) {
 
     const sourceId = ingestionResult.source_id;
 
-    // Redirect to review page with source ID
+    if (
+      ingestionResult.status === "insufficient_data" ||
+      (allowSmallDatasets() &&
+        (ingestionResult.closed_estimates || 0) < MIN_CLOSED_ESTIMATES_PROD)
+    ) {
+      return NextResponse.redirect(
+        `${appUrl}/dashboard/review?source_id=${sourceId}&notice=insufficient_data`
+      );
+    }
+
     return NextResponse.redirect(
       `${appUrl}/dashboard/review?source_id=${sourceId}&success=true`
     );
@@ -165,5 +176,4 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
 

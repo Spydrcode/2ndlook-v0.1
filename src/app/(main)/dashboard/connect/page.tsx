@@ -96,6 +96,8 @@ export default function ConnectPage() {
   }, [searchParams]);
 
   const getErrorMessage = (errorCode: string): string => {
+    const count = searchParams.get("count");
+    const required = searchParams.get("required") || "25";
     const errorMessages: Record<string, string> = {
       oauth_config_missing: "Jobber OAuth is not configured. Please contact your administrator to set up JOBBER_CLIENT_ID and JOBBER_REDIRECT_URI.",
       oauth_start_failed: "Failed to start OAuth flow. Please try again.",
@@ -107,6 +109,7 @@ export default function ConnectPage() {
       jobber_db_error: "Failed to save connection details. Please try again.",
       jobber_ingest_failed: "Failed to fetch your estimates from Jobber. Please try again.",
       jobber_min_estimates: "Minimum 25 closed estimates required. Jobber returned fewer than 25 closed/accepted estimates from the last 90 days.",
+      jobber_insufficient_data: `Connected to Jobber, but we found only ${count || 0} closed estimates. 2ndlook needs at least ${required} closed estimates for a full snapshot. Create/close more estimates in Jobber, then reconnect.`,
       jobber_config_error: "OAuth configuration error. Please contact support.",
       jobber_unexpected_error: "An unexpected error occurred. Please try again.",
     };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertCircle } from "lucide-react";
 
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
+import { MIN_CLOSED_ESTIMATES_PROD } from "@/lib/config/limits";
 
 interface BucketData {
   price_band_lt_500: number;
@@ -25,12 +26,20 @@ export default function ReviewPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sourceId = searchParams.get("source_id");
+  const notice = searchParams.get("notice");
 
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bucketData, setBucketData] = useState<BucketData | null>(null);
   const [estimateCount, setEstimateCount] = useState(0);
+  const [sourceStatus, setSourceStatus] = useState<string | null>(null);
+  const [requiredMin, setRequiredMin] = useState<number | null>(null);
+
+  const isInsufficientDataNotice = useMemo(
+    () => notice === "insufficient_data",
+    [notice]
+  );
 
   useEffect(() => {
     if (!sourceId) {
@@ -51,6 +60,13 @@ export default function ReviewPage() {
 
         if (!response.ok) {
           throw new Error(data.error || "Failed to load data");
+        }
+        
+        if (data.status) {
+          setSourceStatus(data.status);
+        }
+        if (data.metadata?.required_min) {
+          setRequiredMin(Number(data.metadata.required_min));
         }
 
         // Fetch the bucket data to display
@@ -78,6 +94,12 @@ export default function ReviewPage() {
 
   const handleGenerateSnapshot = async () => {
     if (!sourceId) return;
+    if (estimateCount < MIN_CLOSED_ESTIMATES_PROD) {
+      setError(
+        `Minimum ${MIN_CLOSED_ESTIMATES_PROD} closed estimates required for a full snapshot.`
+      );
+      return;
+    }
 
     setIsGenerating(true);
     setError(null);
@@ -150,27 +172,11 @@ export default function ReviewPage() {
     );
   }
 
-  if (estimateCount < 25) {
-    return (
-      <div className="flex flex-1 flex-col gap-6 p-6">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Not enough data</h1>
-          <p className="text-muted-foreground">
-            At least 25 closed estimates are needed to generate a snapshot.
-          </p>
-        </div>
-        <Alert>
-          <AlertDescription>
-            Found {estimateCount} estimates. Please import more data to continue.
-          </AlertDescription>
-        </Alert>
-        <Button variant="outline" onClick={() => router.push("/dashboard/import?category=estimates&tool=file")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Import
-        </Button>
-      </div>
-    );
-  }
+  const effectiveRequiredMin = requiredMin || MIN_CLOSED_ESTIMATES_PROD;
+  const isInsufficientData =
+    isInsufficientDataNotice ||
+    sourceStatus === "insufficient_data" ||
+    estimateCount < MIN_CLOSED_ESTIMATES_PROD;
 
   const totalPriceItems =
     bucketData.price_band_lt_500 +
@@ -192,6 +198,14 @@ export default function ReviewPage() {
           Confirm how your data has been grouped before generating a snapshot.
         </p>
       </div>
+      
+      {isInsufficientData && (
+        <Alert>
+          <AlertDescription>
+            This is a small test dataset ({estimateCount} closed estimates). Full analysis requires {effectiveRequiredMin}+.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* What was included */}
       <Card>
@@ -338,7 +352,10 @@ export default function ReviewPage() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Go Back
             </Button>
-            <Button onClick={handleGenerateSnapshot} disabled={isGenerating}>
+            <Button
+              onClick={handleGenerateSnapshot}
+              disabled={isGenerating || isInsufficientData}
+            >
               {isGenerating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

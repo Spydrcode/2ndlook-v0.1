@@ -5,12 +5,17 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchClosedEstimates } from "./graphql";
-import { normalizeAndStore, MIN_ESTIMATES } from "@/lib/ingest/normalize-estimates";
+import { normalizeAndStore } from "@/lib/ingest/normalize-estimates";
+import { getMinClosedEstimates, MIN_CLOSED_ESTIMATES_PROD } from "@/lib/config/limits";
 
 export interface IngestJobberResult {
   success: boolean;
   source_id?: string;
   error?: string;
+  error_code?: "insufficient_data";
+  closed_estimates?: number;
+  required_min?: number;
+  status?: "ingested" | "insufficient_data";
   kept?: number;
   rejected?: number;
 }
@@ -22,7 +27,7 @@ export interface IngestJobberResult {
  * 1. Create source with status='pending'
  * 2. Fetch estimates from Jobber
  * 3. Normalize and store (enforces 90 days, max 100)
- * 4. Check minimum 25 estimates
+ * 4. Enforce minimum ingest threshold and mark insufficient data when needed
  * 5. Update source status to 'ingested' or rollback on failure
  * 
  * Returns source_id on success or error message on failure.
@@ -81,9 +86,11 @@ export async function ingestJobberEstimates(
 
       console.log(`[JOBBER INGEST] Normalization complete: ${kept} kept, ${rejected} rejected`);
 
-      // Enforce minimum constraint
-      if (kept < MIN_ESTIMATES) {
-        console.log(`[JOBBER INGEST] MINIMUM NOT MET: Need ${MIN_ESTIMATES}, got ${kept}`);
+      const minClosedEstimates = getMinClosedEstimates();
+
+      // Enforce minimum constraint for ingestion
+      if (kept < minClosedEstimates) {
+        console.log(`[JOBBER INGEST] MINIMUM NOT MET: Need ${minClosedEstimates}, got ${kept}`);
         console.log("[JOBBER INGEST] Rolling back source and estimates...");
         
         // Rollback: delete source and estimates
@@ -100,21 +107,40 @@ export async function ingestJobberEstimates(
         console.log("[JOBBER INGEST] Rollback complete");
         return {
           success: false,
-          error: `Minimum ${MIN_ESTIMATES} closed estimates required. Found: ${kept}`,
+          error: `Minimum ${minClosedEstimates} closed estimates required. Found: ${kept}`,
+          error_code: "insufficient_data",
+          closed_estimates: kept,
+          required_min: MIN_CLOSED_ESTIMATES_PROD,
         };
       }
 
-      console.log("[JOBBER INGEST] Minimum met! Updating source status to ingested...");
-      // Update source status to ingested
-      await supabase
-        .from("sources")
-        .update({ status: "ingested" })
-        .eq("id", sourceId);
+      if (kept < MIN_CLOSED_ESTIMATES_PROD) {
+        console.log("[JOBBER INGEST] Below production minimum; marking as insufficient_data...");
+        await supabase
+          .from("sources")
+          .update({
+            status: "insufficient_data",
+            metadata: {
+              closed_estimates: kept,
+              required_min: MIN_CLOSED_ESTIMATES_PROD,
+            },
+          })
+          .eq("id", sourceId);
+      } else {
+        console.log("[JOBBER INGEST] Minimum met! Updating source status to ingested...");
+        await supabase
+          .from("sources")
+          .update({ status: "ingested" })
+          .eq("id", sourceId);
+      }
 
       console.log("[JOBBER INGEST] SUCCESS! Ingestion complete.");
       return {
         success: true,
         source_id: sourceId,
+        status: kept < MIN_CLOSED_ESTIMATES_PROD ? "insufficient_data" : "ingested",
+        closed_estimates: kept,
+        required_min: MIN_CLOSED_ESTIMATES_PROD,
         kept,
         rejected,
       };

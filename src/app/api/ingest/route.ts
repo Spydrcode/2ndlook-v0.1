@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
 import type { IngestResponse, CSVEstimateRow } from "@/types/2ndlook";
-import { normalizeAndStore, MIN_ESTIMATES } from "@/lib/ingest/normalize-estimates";
+import { normalizeAndStore } from "@/lib/ingest/normalize-estimates";
+import { getMinClosedEstimates, MIN_CLOSED_ESTIMATES_PROD } from "@/lib/config/limits";
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,9 +47,10 @@ export async function POST(request: NextRequest) {
 
     // Normalize and filter
     const { kept, rejected } = await normalizeAndStore(supabase, sourceId, rows);
+    const minClosedEstimates = getMinClosedEstimates();
 
-    // Enforce minimum constraint
-    if (kept < MIN_ESTIMATES) {
+    // Enforce minimum constraint for ingestion
+    if (kept < minClosedEstimates) {
       // Rollback: delete inserted estimates
       await supabase
         .from("estimates_normalized")
@@ -57,17 +59,29 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(
         {
-          error: `Minimum ${MIN_ESTIMATES} closed estimates required. Found: ${kept}`,
+          error: `Minimum ${minClosedEstimates} closed estimates required. Found: ${kept}`,
         },
         { status: 400 }
       );
     }
 
-    // Update source status
-    await supabase
-      .from("sources")
-      .update({ status: "ingested" })
-      .eq("id", sourceId);
+    if (kept < MIN_CLOSED_ESTIMATES_PROD) {
+      await supabase
+        .from("sources")
+        .update({
+          status: "insufficient_data",
+          metadata: {
+            closed_estimates: kept,
+            required_min: MIN_CLOSED_ESTIMATES_PROD,
+          },
+        })
+        .eq("id", sourceId);
+    } else {
+      await supabase
+        .from("sources")
+        .update({ status: "ingested" })
+        .eq("id", sourceId);
+    }
 
     const response: IngestResponse = {
       received: rows.length,

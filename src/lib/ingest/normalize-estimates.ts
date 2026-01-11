@@ -4,11 +4,7 @@
  */
 
 import type { CSVEstimateRow, EstimateNormalized } from "@/types/2ndlook";
-
-// Dataset constraints (LOCKED)
-export const MIN_ESTIMATES = 1;
-export const MAX_ESTIMATES = 100;
-export const MAX_DAYS = 90;
+import { MAX_CLOSED_ESTIMATES, MAX_DAYS } from "@/lib/config/limits";
 
 export interface NormalizeResult {
   kept: number;
@@ -18,7 +14,7 @@ export interface NormalizeResult {
 /**
  * Normalize and store estimate rows in the database.
  * Enforces: closed/accepted only, 90 day window, max 100 records.
- * Does NOT enforce minimum - caller should check kept >= MIN_ESTIMATES.
+ * Does NOT enforce minimum - caller should check kept >= getMinClosedEstimates().
  */
 export async function normalizeAndStore(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,7 +59,7 @@ export async function normalizeAndStore(
     }
 
     // Enforce: max 100 estimates
-    if (normalized.length >= MAX_ESTIMATES) {
+    if (normalized.length >= MAX_CLOSED_ESTIMATES) {
       rejected++;
       continue;
     }

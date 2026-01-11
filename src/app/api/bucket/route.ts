@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     // Verify source ownership and status
     const { data: source, error: sourceError } = await supabase
       .from("sources")
-      .select("id, installation_id, status")
+      .select("id, installation_id, status, metadata")
       .eq("id", source_id)
       .single();
 
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid source_id" }, { status: 403 });
     }
 
-    if (source.status !== "ingested") {
+    if (source.status !== "ingested" && source.status !== "insufficient_data") {
       return NextResponse.json(
         { error: "Source must be ingested before bucketing" },
         { status: 400 }
@@ -80,18 +80,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Update source status
-    await supabase
-      .from("sources")
-      .update({ status: "bucketed" })
-      .eq("id", source_id);
+    if (source.status !== "insufficient_data") {
+      await supabase
+        .from("sources")
+        .update({ status: "bucketed" })
+        .eq("id", source_id);
+    }
+
+    const statusForResponse =
+      source.status === "insufficient_data" ? "insufficient_data" : "bucketed";
 
     const response: BucketResponse = {
       source_id,
       bucketed: true,
     };
 
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(
+      {
+        ...response,
+        status: statusForResponse,
+        metadata: source.metadata ?? null,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("Bucket error:", error);
     return NextResponse.json(

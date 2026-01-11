@@ -2,7 +2,12 @@
 
 export type SourceType = "csv" | "salesforce" | "hubspot";
 
-export type SourceStatus = "pending" | "ingested" | "bucketed" | "snapshot_generated";
+export type SourceStatus =
+  | "pending"
+  | "ingested"
+  | "bucketed"
+  | "snapshot_generated"
+  | "insufficient_data";
 
 export type EstimateStatus = "closed" | "accepted";
 
@@ -22,6 +27,10 @@ export interface Source {
   source_name: string;
   created_at: string;
   status: SourceStatus;
+  metadata?: {
+    closed_estimates?: number;
+    required_min?: number;
+  } | null;
 }
 
 export interface EstimateNormalized {
@@ -144,6 +153,8 @@ export interface BucketRequest {
 export interface BucketResponse {
   source_id: string;
   bucketed: boolean;
+  status?: SourceStatus;
+  metadata?: Source["metadata"];
 }
 
 export interface SnapshotRequest {

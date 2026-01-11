@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateSnapshotResult } from "@/lib/ai/openaiClient";
 import { createMCPClient } from "@/lib/mcp/client";
+import { MIN_CLOSED_ESTIMATES_PROD } from "@/lib/config/limits";
 import {
   buildDeterministicSnapshot,
   validateBucketedAggregates,
@@ -89,9 +90,9 @@ export async function runSnapshotOrchestrator(
     validateBucketedAggregates(aggregates);
 
     // Enforce minimum constraint
-    if (aggregates.estimate_count < 25) {
+    if (aggregates.estimate_count < MIN_CLOSED_ESTIMATES_PROD) {
       throw new Error(
-        `Minimum 25 estimates required for snapshot (found: ${aggregates.estimate_count})`
+        `Minimum ${MIN_CLOSED_ESTIMATES_PROD} estimates required for snapshot (found: ${aggregates.estimate_count})`
       );
     }
 
