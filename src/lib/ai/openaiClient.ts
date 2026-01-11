@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { SnapshotResult, ConfidenceLevel } from "@/types/2ndlook";
+import { buildSystemPrompt, buildSnapshotPrompt } from "./prompts";
 
 /**
  * OpenAI client wrapper for 2ndlook v0.1
@@ -7,7 +8,44 @@ import type { SnapshotResult, ConfidenceLevel } from "@/types/2ndlook";
  * Server-only module - never import on client
  */
 
+// Allowlist of supported OpenAI models
+const ALLOWED_MODELS = [
+  "gpt-4o-2024-08-06", // Default - supports structured outputs
+  "gpt-4.1",           // Future compatibility
+  "gpt-4.1-mini",      // Cost-effective option
+] as const;
+
+type AllowedModel = (typeof ALLOWED_MODELS)[number];
+
+/**
+ * Get configured OpenAI model with validation
+ * Falls back to default if invalid model specified
+ */
+function getConfiguredModel(): AllowedModel {
+  const configuredModel = process.env.OPENAI_MODEL;
+  const defaultModel: AllowedModel = "gpt-4o-2024-08-06";
+
+  if (!configuredModel) {
+    return defaultModel;
+  }
+
+  if (ALLOWED_MODELS.includes(configuredModel as AllowedModel)) {
+    return configuredModel as AllowedModel;
+  }
+
+  // Invalid model - log warning but don't crash
+  console.warn(
+    `[OpenAI] Invalid OPENAI_MODEL="${configuredModel}". ` +
+      `Allowed: ${ALLOWED_MODELS.join(", ")}. ` +
+      `Using default: ${defaultModel}`
+  );
+
+  return defaultModel;
+}
+
 interface AgentInput {
+  source_id: string;
+  source_tool?: string | null;
   demand: {
     weekly_volume: { week: string; count: number }[];
     price_distribution: { band: string; count: number }[];
@@ -17,11 +55,18 @@ interface AgentInput {
   };
   estimate_count: number;
   confidence_level: ConfidenceLevel;
-}
-
-interface GenerateSnapshotOptions {
-  source_id: string;
-  snapshot_id?: string;
+  date_range: {
+    earliest: string;
+    latest: string;
+  };
+  // Optional: invoice signals (present when invoices are available)
+  invoiceSignals?: {
+    invoice_count: number;
+    price_distribution: { band: string; count: number }[];
+    time_to_invoice: { band: string; count: number }[];
+    status_distribution: { status: string; count: number }[];
+    weekly_volume: { week: string; count: number }[];
+  };
 }
 
 /**
@@ -137,52 +182,30 @@ const SNAPSHOT_RESULT_SCHEMA = {
  * @throws Error if output is invalid or API fails
  */
 export async function generateSnapshotResult(
-  input: AgentInput,
-  options: GenerateSnapshotOptions
+  input: AgentInput
 ): Promise<SnapshotResult> {
   const client = getOpenAIClient();
-  const now = new Date().toISOString();
+  const model = getConfiguredModel();
 
-  // Build system prompt (no raw data, aggregates only)
-  const systemPrompt = `You are a business insights analyst for 2ndlook.
-Your task is to analyze bucketed estimate data and return a structured JSON snapshot.
-
-RULES:
-1. You receive ONLY aggregated buckets - never raw estimate rows.
-2. You must return valid JSON matching the exact schema provided.
-3. Your output should reflect the patterns in the bucketed data.
-4. Use the provided metadata (source_id, snapshot_id, confidence_level) as-is.
-5. Do not invent data - use the exact counts from the input buckets.
-
-The output format is strictly enforced by the JSON schema.`;
-
-  // Build user prompt with bucketed data only
-  const userPrompt = `Analyze this bucketed estimate data and return a structured snapshot:
-
-SOURCE METADATA:
-- source_id: ${options.source_id}
-- snapshot_id: ${options.snapshot_id || "pending"}
-- generated_at: ${now}
-- estimate_count: ${input.estimate_count}
-- confidence_level: ${input.confidence_level}
-
-BUCKETED DATA (aggregates only):
-
-Weekly Volume:
-${input.demand.weekly_volume.map((w) => `  ${w.week}: ${w.count} estimates`).join("\n")}
-
-Price Distribution:
-${input.demand.price_distribution.map((p) => `  ${p.band}: ${p.count} estimates`).join("\n")}
-
-Decision Latency:
-${input.decision_latency.distribution.map((d) => `  ${d.band}: ${d.count} estimates`).join("\n")}
-
-Return a JSON snapshot that includes this exact data in the required schema.`;
+  // Use prompt pack for consistent messaging
+  const systemPrompt = buildSystemPrompt();
+  const userPrompt = buildSnapshotPrompt(
+    {
+      source_id: input.source_id,
+      source_tool: input.source_tool,
+      estimate_count: input.estimate_count,
+      date_range: input.date_range,
+      weekly_volume: input.demand.weekly_volume,
+      price_distribution: input.demand.price_distribution,
+      decision_latency: input.decision_latency.distribution,
+    },
+    { tool: input.source_tool }
+  );
 
   try {
     // Call OpenAI with structured output enforcement
     const response = await client.chat.completions.create({
-      model: "gpt-4o-2024-08-06", // Supports structured outputs
+      model,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },

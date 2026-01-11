@@ -3,7 +3,7 @@
  * These types define the normalized data shapes that all connectors must produce.
  */
 
-export type ConnectorCategory = "estimates" | "calendar" | "crm";
+export type ConnectorCategory = "estimates" | "invoices" | "calendar" | "crm";
 
 export type EstimateConnectorTool =
   | "file"
@@ -14,6 +14,13 @@ export type EstimateConnectorTool =
   | "joist"
   | "housecallpro";
 
+export type InvoiceConnectorTool =
+  | "file"
+  | "jobber"
+  | "quickbooks"
+  | "servicetitan"
+  | "square";
+
 export type CalendarConnectorTool =
   | "google-calendar"
   | "outlook"
@@ -23,7 +30,7 @@ export type CalendarConnectorTool =
 
 export type CrmConnectorTool = "hubspot" | "highlevel" | "pipedrive" | "salesforce";
 
-export type ConnectorTool = EstimateConnectorTool | CalendarConnectorTool | CrmConnectorTool;
+export type ConnectorTool = EstimateConnectorTool | InvoiceConnectorTool | CalendarConnectorTool | CrmConnectorTool;
 
 /**
  * Canonical estimate row.
@@ -36,6 +43,19 @@ export interface EstimateCanonicalRow {
   amount: number;
   status: "closed" | "accepted";
   job_type?: string | null;
+}
+
+/**
+ * Canonical invoice row.
+ * All invoice connectors must normalize their data to this shape.
+ * Signal-only: no customer names, addresses, line items, notes, taxes, discounts, or payments.
+ */
+export interface InvoiceCanonicalRow {
+  invoice_id: string; // Opaque identifier
+  invoice_date: string; // ISO 8601
+  invoice_total: number;
+  invoice_status: "draft" | "sent" | "void" | "paid" | "unpaid" | "overdue";
+  linked_estimate_id?: string | null; // Optional link to estimate
 }
 
 /**

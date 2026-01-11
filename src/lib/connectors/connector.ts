@@ -7,6 +7,7 @@ import type {
   ConnectorCategory,
   ConnectorTool,
   EstimateCanonicalRow,
+  InvoiceCanonicalRow,
   CalendarSignals,
   CrmSignals,
 } from "./types";
@@ -46,6 +47,18 @@ export interface UniversalConnector {
    * OAuth-based connectors will implement this.
    */
   fetchEstimates?(): Promise<EstimateCanonicalRow[]>;
+
+  /**
+   * For v0.1: Normalize invoices from an uploaded file.
+   * Only file-based invoice connectors implement this.
+   */
+  normalizeInvoicesFromFile?(file: File | Blob | Buffer): Promise<InvoiceCanonicalRow[]>;
+
+  /**
+   * For v0.2+: Fetch invoices from API.
+   * OAuth-based invoice connectors will implement this.
+   */
+  fetchInvoices?(): Promise<InvoiceCanonicalRow[]>;
 
   /**
    * For v0.2+: Fetch aggregated calendar signals.

@@ -52,13 +52,14 @@ export function buildDeterministicSnapshot(
     (item) => item.count > 0
   );
 
-  return {
+  const result: SnapshotResult = {
     meta: {
       snapshot_id,
       source_id,
       generated_at: now,
       estimate_count: aggregates.estimate_count,
       confidence_level: confidenceLevel,
+      invoice_count: aggregates.invoiceSignals?.invoice_count,
     },
     demand: {
       weekly_volume: aggregates.weekly_volume,
@@ -68,6 +69,24 @@ export function buildDeterministicSnapshot(
       distribution: latencyDistribution,
     },
   };
+
+  // Add invoice signals if available
+  if (aggregates.invoiceSignals) {
+    result.invoiceSignals = {
+      price_distribution: aggregates.invoiceSignals.price_distribution.filter(
+        (item) => item.count > 0
+      ),
+      time_to_invoice: aggregates.invoiceSignals.time_to_invoice.filter(
+        (item) => item.count > 0
+      ),
+      status_distribution: aggregates.invoiceSignals.status_distribution.filter(
+        (item) => item.count > 0
+      ),
+      weekly_volume: aggregates.invoiceSignals.weekly_volume,
+    };
+  }
+
+  return result;
 }
 
 /**

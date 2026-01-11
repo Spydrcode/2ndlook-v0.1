@@ -21,9 +21,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { config } from "dotenv";
 
 // Load environment
-require("dotenv").config({ path: ".env.local" });
+config({ path: ".env.local" });
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -54,25 +55,30 @@ interface SnapshotResult {
   };
 }
 
-function validateSnapshotResult(result: any): result is SnapshotResult {
+function validateSnapshotResult(result: unknown): result is SnapshotResult {
   if (!result || typeof result !== "object") return false;
 
+  const r = result as Record<string, unknown>;
+
   // Validate meta
-  if (!result.meta || typeof result.meta !== "object") return false;
-  if (typeof result.meta.snapshot_id !== "string") return false;
-  if (typeof result.meta.source_id !== "string") return false;
-  if (typeof result.meta.generated_at !== "string") return false;
-  if (typeof result.meta.estimate_count !== "number") return false;
-  if (!["low", "medium", "high"].includes(result.meta.confidence_level)) return false;
+  if (!r.meta || typeof r.meta !== "object") return false;
+  const meta = r.meta as Record<string, unknown>;
+  if (typeof meta.snapshot_id !== "string") return false;
+  if (typeof meta.source_id !== "string") return false;
+  if (typeof meta.generated_at !== "string") return false;
+  if (typeof meta.estimate_count !== "number") return false;
+  if (!["low", "medium", "high"].includes(meta.confidence_level as string)) return false;
 
   // Validate demand
-  if (!result.demand || typeof result.demand !== "object") return false;
-  if (!Array.isArray(result.demand.weekly_volume)) return false;
-  if (!Array.isArray(result.demand.price_distribution)) return false;
+  if (!r.demand || typeof r.demand !== "object") return false;
+  const demand = r.demand as Record<string, unknown>;
+  if (!Array.isArray(demand.weekly_volume)) return false;
+  if (!Array.isArray(demand.price_distribution)) return false;
 
   // Validate decision_latency
-  if (!result.decision_latency || typeof result.decision_latency !== "object") return false;
-  if (!Array.isArray(result.decision_latency.distribution)) return false;
+  if (!r.decision_latency || typeof r.decision_latency !== "object") return false;
+  const decisionLatency = r.decision_latency as Record<string, unknown>;
+  if (!Array.isArray(decisionLatency.distribution)) return false;
 
   return true;
 }
@@ -114,18 +120,26 @@ async function runSmokeTest() {
 
     // Step 2: Load demo data
     console.log("📂 Step 2: Loading demo data...");
-    const demoPath = join(process.cwd(), "src", "demo-data", "estimates-demo.csv");
+    
+    // Try .demo/estimates-demo.csv first, fallback to src/demo-data
+    let demoPath = join(process.cwd(), ".demo", "estimates-demo.csv");
     let csvContent: string;
     
     try {
       csvContent = readFileSync(demoPath, "utf-8");
-    } catch (error) {
-      console.error(`❌ Demo data not found at: ${demoPath}`);
-      console.error("   Create demo data first or use existing source");
-      process.exit(1);
+      console.log(`✅ Demo data loaded from .demo/ (${csvContent.split("\n").length - 1} rows)\n`);
+    } catch {
+      // Fallback to old location
+      demoPath = join(process.cwd(), "src", "demo-data", "estimates-demo.csv");
+      try {
+        csvContent = readFileSync(demoPath, "utf-8");
+        console.log(`✅ Demo data loaded from src/demo-data/ (${csvContent.split("\n").length - 1} rows)\n`);
+      } catch (error) {
+        console.error("❌ Demo data not found. Run: npm run demo:generate");
+        console.error(`   Expected at: ${join(process.cwd(), ".demo", "estimates-demo.csv")}`);
+        process.exit(1);
+      }
     }
-
-    console.log(`✅ Demo data loaded (${csvContent.split("\n").length - 1} rows)\n`);
 
     // Step 3: Ingest (simplified - assumes API would handle this)
     console.log("📥 Step 3: Ingesting estimates...");
@@ -134,7 +148,6 @@ async function runSmokeTest() {
     // For smoke test, we'll mock the ingestion by directly inserting
     // In production, this would go through /api/ingest
     const lines = csvContent.trim().split("\n");
-    const headers = lines[0].split(",");
     
     const estimates = lines.slice(1).map((line) => {
       const values = line.split(",");
@@ -168,25 +181,34 @@ async function runSmokeTest() {
     // Step 4: Bucket
     console.log("🗂️  Step 4: Bucketing estimates...");
     
-    const bucketResponse = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/api/bucket`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ source_id }),
-    });
-
-    if (!bucketResponse.ok) {
-      // Fallback: bucket directly if API not available
-      console.log("   API not available, skipping bucket step");
-      console.log("   (In production, call POST /api/bucket)\n");
+    if (!SUPABASE_URL) {
+      console.log("   Skipping bucket step (no SUPABASE_URL)\n");
     } else {
-      console.log("✅ Estimates bucketed\n");
+      const bucketResponse = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/api/bucket`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ source_id }),
+      });
+
+      if (!bucketResponse.ok) {
+        // Fallback: bucket directly if API not available
+        console.log("   API not available, skipping bucket step");
+        console.log("   (In production, call POST /api/bucket)\n");
+      } else {
+        console.log("✅ Estimates bucketed\n");
+      }
     }
 
     // Step 5: Generate snapshot
     console.log("📸 Step 5: Generating snapshot...");
+    
+    if (!SUPABASE_URL) {
+      console.error("❌ Cannot generate snapshot without SUPABASE_URL");
+      process.exit(1);
+    }
     
     const snapshotResponse = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/api/snapshot`, {
       method: "POST",

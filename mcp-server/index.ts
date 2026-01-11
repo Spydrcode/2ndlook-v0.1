@@ -175,28 +175,77 @@ async function handleGetBucketedAggregates(args: {
     throw new Error(`Failed to get estimate count: ${countError.message}`);
   }
 
+  // Get invoice buckets if available (optional - graceful degradation)
+  const { data: invoiceBucket } = await supabase
+    .from("invoice_buckets")
+    .select("*")
+    .eq("source_id", args.source_id)
+    .single();
+
+  // Get invoice count if buckets exist
+  let invoiceCount = 0;
+  if (invoiceBucket) {
+    const { count, error: invoiceCountError } = await supabase
+      .from("invoices_normalized")
+      .select("*", { count: "exact", head: true })
+      .eq("source_id", args.source_id);
+
+    if (!invoiceCountError) {
+      invoiceCount = count || 0;
+    }
+  }
+
   // Return safe bucketed data only
   const typedBucket = bucket as EstimateBucket;
-  return {
+  const result: any = {
     source_id: args.source_id,
     estimate_count: estimateCount || 0,
     status: source.status,
-    buckets: {
-      weekly_volume: typedBucket.weekly_volume,
-      price_distribution: [
-        { band: "<500", count: typedBucket.price_band_lt_500 },
-        { band: "500-1500", count: typedBucket.price_band_500_1500 },
-        { band: "1500-5000", count: typedBucket.price_band_1500_5000 },
-        { band: "5000+", count: typedBucket.price_band_5000_plus },
-      ],
-      decision_latency: [
-        { band: "0-2d", count: typedBucket.latency_band_0_2 },
-        { band: "3-7d", count: typedBucket.latency_band_3_7 },
-        { band: "8-21d", count: typedBucket.latency_band_8_21 },
-        { band: "22+d", count: typedBucket.latency_band_22_plus },
-      ],
-    },
+    weekly_volume: typedBucket.weekly_volume,
+    price_distribution: [
+      { band: "<500", count: typedBucket.price_band_lt_500 },
+      { band: "500-1500", count: typedBucket.price_band_500_1500 },
+      { band: "1500-5000", count: typedBucket.price_band_1500_5000 },
+      { band: "5000+", count: typedBucket.price_band_5000_plus },
+    ],
+    latency_distribution: [
+      { band: "0-2d", count: typedBucket.latency_band_0_2 },
+      { band: "3-7d", count: typedBucket.latency_band_3_7 },
+      { band: "8-21d", count: typedBucket.latency_band_8_21 },
+      { band: "22+d", count: typedBucket.latency_band_22_plus },
+    ],
   };
+
+  // Add invoice signals if available (optional)
+  if (invoiceBucket && invoiceCount > 0) {
+    const typedInvoiceBucket = invoiceBucket as any;
+    result.invoiceSignals = {
+      invoice_count: invoiceCount,
+      price_distribution: [
+        { band: "<500", count: typedInvoiceBucket.price_band_lt_500 || 0 },
+        { band: "500-1500", count: typedInvoiceBucket.price_band_500_1500 || 0 },
+        { band: "1500-5000", count: typedInvoiceBucket.price_band_1500_5000 || 0 },
+        { band: "5000+", count: typedInvoiceBucket.price_band_5000_plus || 0 },
+      ],
+      time_to_invoice: [
+        { band: "0-7d", count: typedInvoiceBucket.time_to_invoice_0_7 || 0 },
+        { band: "8-14d", count: typedInvoiceBucket.time_to_invoice_8_14 || 0 },
+        { band: "15-30d", count: typedInvoiceBucket.time_to_invoice_15_30 || 0 },
+        { band: "31+d", count: typedInvoiceBucket.time_to_invoice_31_plus || 0 },
+      ],
+      status_distribution: [
+        { status: "draft", count: typedInvoiceBucket.status_draft || 0 },
+        { status: "sent", count: typedInvoiceBucket.status_sent || 0 },
+        { status: "void", count: typedInvoiceBucket.status_void || 0 },
+        { status: "paid", count: typedInvoiceBucket.status_paid || 0 },
+        { status: "unpaid", count: typedInvoiceBucket.status_unpaid || 0 },
+        { status: "overdue", count: typedInvoiceBucket.status_overdue || 0 },
+      ],
+      weekly_volume: typedInvoiceBucket.weekly_volume || [],
+    };
+  }
+
+  return result;
 }
 
 async function handleWriteSnapshotResult(args: {

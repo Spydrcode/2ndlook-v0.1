@@ -100,6 +100,8 @@ export async function runSnapshotOrchestrator(
     const confidenceLevel = getConfidenceLevel(aggregates.estimate_count);
     
     const agentInput = {
+      source_id: aggregates.source_id,
+      source_tool: aggregates.source_tool || null,
       demand: {
         weekly_volume: aggregates.weekly_volume,
         price_distribution: aggregates.price_distribution,
@@ -109,7 +111,22 @@ export async function runSnapshotOrchestrator(
       },
       estimate_count: aggregates.estimate_count,
       confidence_level: confidenceLevel,
+      date_range: aggregates.date_range || {
+        earliest: new Date().toISOString(),
+        latest: new Date().toISOString(),
+      },
+      // Include invoice signals if available
+      invoiceSignals: aggregates.invoiceSignals,
     };
+
+    // Log invoice availability
+    if (aggregates.invoiceSignals) {
+      console.log("[Orchestrator] Invoice signals available:", {
+        invoice_count: aggregates.invoiceSignals.invoice_count,
+      });
+    } else {
+      console.log("[Orchestrator] Estimate-only mode (no invoice data)");
+    }
 
     // Step 4: Try orchestrated generation with OpenAI (max 1 call)
     console.log("[Orchestrator] Calling OpenAI for snapshot generation:", {
@@ -121,10 +138,7 @@ export async function runSnapshotOrchestrator(
 
     try {
       // OpenAI call (max 1 per v0.1 constraint)
-      snapshotResult = await generateSnapshotResult(agentInput, {
-        source_id,
-        snapshot_id,
-      });
+      snapshotResult = await generateSnapshotResult(agentInput);
 
       // Validate LLM output matches schema
       validateSnapshotResult(snapshotResult);

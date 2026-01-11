@@ -6,6 +6,8 @@ export type SourceStatus = "pending" | "ingested" | "bucketed" | "snapshot_gener
 
 export type EstimateStatus = "closed" | "accepted";
 
+export type InvoiceStatus = "draft" | "sent" | "void" | "paid" | "unpaid" | "overdue";
+
 export type ConfidenceLevel = "low" | "medium" | "high";
 
 export type PriceBand = "<500" | "500-1500" | "1500-5000" | "5000+";
@@ -33,6 +35,16 @@ export interface EstimateNormalized {
   job_type?: string;
 }
 
+export interface InvoiceNormalized {
+  id: string;
+  invoice_id: string;
+  source_id: string;
+  invoice_date: string; // ISO 8601
+  invoice_total: number;
+  invoice_status: InvoiceStatus;
+  linked_estimate_id?: string | null;
+}
+
 export interface EstimateBucket {
   id: string;
   source_id: string;
@@ -44,6 +56,31 @@ export interface EstimateBucket {
   latency_band_3_7: number;
   latency_band_8_21: number;
   latency_band_22_plus: number;
+  weekly_volume: { week: string; count: number }[];
+  created_at: string;
+}
+
+export interface InvoiceBucket {
+  id: string;
+  source_id: string;
+  // Invoice totals by same price bands as estimates
+  price_band_lt_500: number;
+  price_band_500_1500: number;
+  price_band_1500_5000: number;
+  price_band_5000_plus: number;
+  // Time from estimate to invoice (for linked invoices only)
+  time_to_invoice_0_7: number;   // 0-7 days
+  time_to_invoice_8_14: number;  // 8-14 days
+  time_to_invoice_15_30: number; // 15-30 days
+  time_to_invoice_31_plus: number; // 31+ days
+  // Status distribution
+  status_draft: number;
+  status_sent: number;
+  status_void: number;
+  status_paid: number;
+  status_unpaid: number;
+  status_overdue: number;
+  // Volume over time
   weekly_volume: { week: string; count: number }[];
   created_at: string;
 }
@@ -66,6 +103,7 @@ export interface SnapshotResult {
     generated_at: string;
     estimate_count: number;
     confidence_level: ConfidenceLevel;
+    invoice_count?: number; // Optional: present when invoices are available
   };
   demand: {
     weekly_volume: { week: string; count: number }[];
@@ -73,6 +111,16 @@ export interface SnapshotResult {
   };
   decision_latency: {
     distribution: { band: string; count: number }[];
+  };
+  invoiceSignals?: {
+    // Invoice totals by price band
+    price_distribution: { band: string; count: number }[];
+    // Time from estimate to invoice
+    time_to_invoice: { band: string; count: number }[];
+    // Invoice status distribution
+    status_distribution: { status: string; count: number }[];
+    // Invoice volume over time
+    weekly_volume: { week: string; count: number }[];
   };
 }
 

@@ -26,10 +26,23 @@ export interface MCPToolResponse {
 
 export interface BucketedAggregates {
   source_id: string;
+  source_tool?: string | null;
   estimate_count: number;
+  date_range?: {
+    earliest: string;
+    latest: string;
+  };
   weekly_volume: { week: string; count: number }[];
   price_distribution: { band: string; count: number }[];
   latency_distribution: { band: string; count: number }[];
+  // Optional: invoice signals (present when invoices are available)
+  invoiceSignals?: {
+    invoice_count: number;
+    price_distribution: { band: string; count: number }[];
+    time_to_invoice: { band: string; count: number }[];
+    status_distribution: { status: string; count: number }[];
+    weekly_volume: { week: string; count: number }[];
+  };
 }
 
 export interface WriteSnapshotParams {

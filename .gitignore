@@ -38,3 +38,4 @@ next-env.d.ts
 
 # demo data (internal testing only)
 /src/demo-data/
+/.demo/

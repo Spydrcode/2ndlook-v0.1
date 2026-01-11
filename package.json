@@ -12,6 +12,7 @@
     "check:fix": "biome check --write",
     "prepare": "husky",
     "generate:presets": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' src/scripts/generate-theme-presets.ts",
+    "demo:generate": "npx tsx scripts/generate-demo-estimates.ts",
     "mcp:dev": "cd mcp-server && npx tsx index.ts",
     "mcp:build": "cd mcp-server && npx tsc",
     "mcp:start": "cd mcp-server && node dist/index.js",

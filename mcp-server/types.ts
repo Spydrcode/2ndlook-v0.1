@@ -7,6 +7,8 @@ export type SourceStatus = "pending" | "ingested" | "bucketed" | "snapshot_gener
 
 export type EstimateStatus = "closed" | "accepted";
 
+export type InvoiceStatus = "draft" | "sent" | "void" | "paid" | "unpaid" | "overdue";
+
 export type ConfidenceLevel = "low" | "medium" | "high";
 
 export type PriceBand = "<500" | "500-1500" | "1500-5000" | "5000+";
@@ -67,6 +69,7 @@ export interface SnapshotResult {
     generated_at: string;
     estimate_count: number;
     confidence_level: ConfidenceLevel;
+    invoice_count?: number;
   };
   demand: {
     weekly_volume: { week: string; count: number }[];
@@ -74,5 +77,11 @@ export interface SnapshotResult {
   };
   decision_latency: {
     distribution: { band: string; count: number }[];
+  };
+  invoiceSignals?: {
+    price_distribution: { band: string; count: number }[];
+    time_to_invoice: { band: string; count: number }[];
+    status_distribution: { status: string; count: number }[];
+    weekly_volume: { week: string; count: number }[];
   };
 }
