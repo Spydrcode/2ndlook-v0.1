@@ -302,7 +302,7 @@ async function handleListSnapshots(args: { installation_id: string; limit?: numb
 
   return {
     installation_id: args.installation_id,
-    snapshots: (snapshots as Snapshot[]).map((s) => ({
+    snapshots: (snapshots || []).map((s: any) => ({
       snapshot_id: s.id,
       source_id: s.source_id,
       estimate_count: s.estimate_count,
@@ -330,7 +330,7 @@ async function handleListSources(args: { installation_id: string; limit?: number
 
   return {
     installation_id: args.installation_id,
-    sources: (sources as Source[]).map((s) => ({
+    sources: (sources || []).map((s: any) => ({
       source_id: s.id,
       source_type: s.source_type,
       source_name: s.source_name,
