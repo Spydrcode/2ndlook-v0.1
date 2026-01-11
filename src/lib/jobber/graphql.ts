@@ -32,21 +32,24 @@ export async function fetchClosedEstimates(
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
   const dateFilter = ninetyDaysAgo.toISOString().split("T")[0];
 
+  // Try edges { node } structure first (most common in GraphQL pagination)
   const query = `
     query GetQuotes($dateFilter: Date!) {
       quotes(
         filter: { createdAfter: $dateFilter }
         first: 100
       ) {
-        nodes {
-          id
-          createdAt
-          closedAt
-          total {
-            amount
-            currency
+        edges {
+          node {
+            id
+            createdAt
+            closedAt
+            total {
+              amount
+              currency
+            }
+            status
           }
-          status
         }
       }
     }
@@ -87,7 +90,17 @@ export async function fetchClosedEstimates(
     throw new Error("GraphQL query failed: " + JSON.stringify(result.errors));
   }
 
-  const quotes = (result.data?.quotes?.nodes || []) as JobberQuote[];
+  // Try both edges.node and nodes structures
+  let quotes: JobberQuote[] = [];
+  if (result.data?.quotes?.edges) {
+    console.log("[JOBBER RAW RESPONSE] Using edges.node structure");
+    quotes = result.data.quotes.edges.map((edge: any) => edge.node);
+  } else if (result.data?.quotes?.nodes) {
+    console.log("[JOBBER RAW RESPONSE] Using nodes structure");
+    quotes = result.data.quotes.nodes;
+  } else {
+    console.log("[JOBBER RAW RESPONSE] No quotes found in response");
+  }
   
   console.log("[JOBBER RAW RESPONSE] Total quotes found:", quotes.length);
   if (quotes.length > 0) {
