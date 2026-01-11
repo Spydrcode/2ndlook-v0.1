@@ -45,9 +45,16 @@ export async function GET(request: NextRequest) {
     const cookieStore = await cookies();
     const storedState = cookieStore.get("jobber_oauth_state")?.value;
     const installationId = cookieStore.get("jobber_oauth_installation")?.value;
+    
+    console.log("[JOBBER CALLBACK] State validation:", {
+      receivedState: state,
+      storedState,
+      installationId,
+      allCookies: cookieStore.getAll().map(c => c.name)
+    });
 
     if (!storedState || !installationId || storedState !== state) {
-      console.error("OAuth state mismatch or missing");
+      console.error("[JOBBER CALLBACK] OAuth state mismatch or missing");
       return NextResponse.redirect(
         `${appUrl}/dashboard/connect?error=jobber_state_mismatch`
       );

@@ -40,6 +40,13 @@ export async function GET(request: NextRequest) {
     // Create response with redirect
     const response = NextResponse.redirect(authUrl.toString());
 
+    console.log("[JOBBER START] Setting OAuth cookies:", {
+      state,
+      installationId,
+      secure: process.env.NODE_ENV === "production",
+      domain: request.nextUrl.hostname
+    });
+
     // Store state in HttpOnly cookie (10 minute expiry)
     response.cookies.set("jobber_oauth_state", state, {
       httpOnly: true,
@@ -58,6 +65,7 @@ export async function GET(request: NextRequest) {
       path: "/",
     });
 
+    console.log("[JOBBER START] Redirecting to Jobber OAuth:", authUrl.toString());
     return response;
   } catch (error) {
     console.error("Jobber OAuth start error:", error);
