@@ -126,11 +126,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Trigger ingestion
-    console.log("Starting Jobber ingestion...");
+    console.log("[JOBBER CALLBACK] Starting Jobber ingestion for installation:", installationId);
     const ingestionResult = await ingestJobberEstimates(installationId);
+    console.log("[JOBBER CALLBACK] Ingestion result:", JSON.stringify(ingestionResult, null, 2));
 
     if (!ingestionResult.success) {
-      console.error("Ingestion failed:", ingestionResult.error);
+      console.error("[JOBBER CALLBACK] Ingestion failed:", ingestionResult.error);
       
       // Check if it's a minimum estimates error
       if (ingestionResult.error?.includes("Minimum")) {

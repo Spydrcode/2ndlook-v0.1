@@ -57,9 +57,10 @@ export async function ingestJobberEstimates(
 
     try {
       // Fetch estimates from Jobber
-      console.log("Fetching closed estimates from Jobber...");
+      console.log("[JOBBER INGEST] Fetching closed estimates from Jobber for installation:", installationId);
       const estimateRows = await fetchClosedEstimates(installationId);
-      console.log(`Fetched ${estimateRows.length} closed/accepted estimates`);
+      console.log(`[JOBBER INGEST] Fetched ${estimateRows.length} closed/accepted estimates`);
+      console.log("[JOBBER INGEST] Sample data:", estimateRows.slice(0, 2));
 
       // Normalize and store (applies 90 day cutoff and max 100)
       const { kept, rejected } = await normalizeAndStore(

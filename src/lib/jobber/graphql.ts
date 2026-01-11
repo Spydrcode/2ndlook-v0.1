@@ -19,10 +19,13 @@ export interface JobberQuote {
 export async function fetchClosedEstimates(
   installationId: string
 ): Promise<CSVEstimateRow[]> {
+  console.log("[JOBBER GRAPHQL] Getting access token for installation:", installationId);
   const accessToken = await getJobberAccessToken(installationId);
   if (!accessToken) {
+    console.error("[JOBBER GRAPHQL] Failed to get access token");
     throw new Error("Failed to get Jobber access token");
   }
+  console.log("[JOBBER GRAPHQL] Got access token, fetching quotes...");
 
   // Calculate 90 days ago
   const ninetyDaysAgo = new Date();
@@ -64,9 +67,10 @@ export async function fetchClosedEstimates(
 
   if (!response.ok) {
     const errorData = await response.text();
-    console.error("Jobber GraphQL error:", response.status, errorData);
-    throw new Error(`Jobber API error: ${response.status}`);
+    console.error("[JOBBER GRAPHQL] API error:", response.status, errorData);
+    throw new Error(`Jobber API error: ${response.status} - ${errorData}`);
   }
+  console.log("[JOBBER GRAPHQL] Response OK, parsing data...");
 
   const result = await response.json();
 
