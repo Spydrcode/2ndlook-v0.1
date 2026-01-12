@@ -1,9 +1,10 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { upsertConnection } from "@/lib/oauth/connections";
 import { ingestJobberEstimates } from "@/lib/jobber/ingest";
 import { allowSmallDatasets, MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
+export const runtime = "nodejs";
 
 /**
  * OAuth Callback Route for Jobber
@@ -13,7 +14,8 @@ import { allowSmallDatasets, MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/
  * triggers ingestion, and redirects user to review page.
  */
 export async function GET(request: NextRequest) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
+  const appUrl =
+    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
   try {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get("code");
@@ -47,13 +49,6 @@ export async function GET(request: NextRequest) {
     const storedState = cookieStore.get("jobber_oauth_state")?.value;
     const installationId = cookieStore.get("jobber_oauth_installation")?.value;
     
-    console.log("[JOBBER CALLBACK] State validation:", {
-      receivedState: state,
-      storedState,
-      installationId,
-      allCookies: cookieStore.getAll().map(c => c.name)
-    });
-
     if (!storedState || !installationId || storedState !== state) {
       console.error("[JOBBER CALLBACK] OAuth state mismatch or missing");
       return NextResponse.redirect(
@@ -64,7 +59,6 @@ export async function GET(request: NextRequest) {
     // Clear state cookies
     cookieStore.delete("jobber_oauth_state");
     cookieStore.delete("jobber_oauth_installation");
-    const supabase = createAdminClient();
 
     // Validate environment variables
     if (!process.env.JOBBER_CLIENT_ID || !process.env.JOBBER_CLIENT_SECRET || !process.env.JOBBER_REDIRECT_URI) {
@@ -98,7 +92,6 @@ export async function GET(request: NextRequest) {
     }
 
     const tokens = await tokenResponse.json();
-    console.log("Token response:", JSON.stringify(tokens, null, 2));
     const { access_token, refresh_token, expires_in } = tokens;
 
     if (!access_token || !refresh_token) {
@@ -113,20 +106,17 @@ export async function GET(request: NextRequest) {
     const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 
     // Store tokens in database
-    const { error: dbError } = await supabase
-      .from("oauth_connections")
-      .upsert({
-        installation_id: installationId,
-        tool: "jobber",
-        access_token,
-        refresh_token,
-        expires_at: expiresAt,
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: "installation_id,tool",
+    try {
+      await upsertConnection({
+        installationId,
+        provider: "jobber",
+        accessToken: access_token,
+        refreshToken: refresh_token,
+        tokenExpiresAt: expiresAt,
+        scopes: process.env.JOBBER_SCOPES || null,
+        metadata: { granted_at: new Date().toISOString() },
       });
-
-    if (dbError) {
+    } catch (dbError) {
       console.error("Failed to store OAuth tokens:", dbError);
       return NextResponse.redirect(
         `${appUrl}/dashboard/connect?error=jobber_db_error`

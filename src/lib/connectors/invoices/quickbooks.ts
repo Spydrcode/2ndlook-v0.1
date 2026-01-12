@@ -1,6 +1,6 @@
 /**
- * QuickBooks invoice connector (stub).
- * OAuth integration not yet implemented.
+ * QuickBooks invoice connector.
+ * OAuth connect is available; data fetch will be implemented later.
  */
 
 import type { UniversalConnector } from "../connector";
@@ -10,7 +10,7 @@ import { NotImplementedError } from "../connector";
 export class QuickBooksInvoiceConnector implements UniversalConnector {
   category = "invoices" as const;
   tool = "quickbooks" as const;
-  isImplemented = false;
+  isImplemented = true;
 
   getDisplayName(): string {
     return "QuickBooks";

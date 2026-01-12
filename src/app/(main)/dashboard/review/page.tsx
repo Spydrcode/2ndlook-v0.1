@@ -94,12 +94,6 @@ export default function ReviewPage() {
 
   const handleGenerateSnapshot = async () => {
     if (!sourceId) return;
-    if (estimateCount < MIN_MEANINGFUL_ESTIMATES_PROD) {
-      setError(
-        `Minimum ${MIN_MEANINGFUL_ESTIMATES_PROD} meaningful estimates required for a full snapshot.`
-      );
-      return;
-    }
 
     setIsGenerating(true);
     setError(null);
@@ -354,7 +348,7 @@ export default function ReviewPage() {
             </Button>
             <Button
               onClick={handleGenerateSnapshot}
-              disabled={isGenerating || isInsufficientData}
+              disabled={isGenerating}
             >
               {isGenerating ? (
                 <>

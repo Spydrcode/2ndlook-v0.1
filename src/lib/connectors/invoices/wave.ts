@@ -5,7 +5,7 @@ import { NotImplementedError } from "../connector";
 export class WaveInvoiceConnector implements UniversalConnector {
   category = "invoices" as const;
   tool = "wave" as const;
-  isImplemented = false;
+  isImplemented = true;
 
   getDisplayName(): string {
     return "Wave";

@@ -1,6 +1,6 @@
 /**
- * Housecall Pro estimate connector (stub).
- * OAuth integration not yet implemented.
+ * Housecall Pro estimate connector.
+ * OAuth connect is available; data fetch will be implemented later.
  */
 
 import type { UniversalConnector } from "../connector";
@@ -10,7 +10,7 @@ import { NotImplementedError } from "../connector";
 export class HousecallProConnector implements UniversalConnector {
   category = "estimates" as const;
   tool = "housecall-pro" as const;
-  isImplemented = false;
+  isImplemented = true;
 
   getDisplayName(): string {
     return "Housecall Pro";

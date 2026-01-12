@@ -3,6 +3,7 @@ import type {
   ConfidenceLevel,
 } from "@/types/2ndlook";
 import type { BucketedAggregates } from "@/lib/mcp/client";
+import { WINDOW_DAYS } from "@/lib/config/limits";
 
 /**
  * Deterministic snapshot builder for orchestrator
@@ -40,53 +41,67 @@ export function buildDeterministicSnapshot(
   source_id: string,
   snapshot_id = ""
 ): SnapshotResult {
-  const now = new Date().toISOString();
   const confidenceLevel = getConfidenceLevel(aggregates.estimate_count);
-
-  // Filter zero-count bands
-  const priceDistribution = aggregates.price_distribution.filter(
-    (item) => item.count > 0
+  const totalLatency = aggregates.latency_distribution.reduce(
+    (sum, item) => sum + item.count,
+    0
   );
+  const fastLatency = aggregates.latency_distribution
+    .filter((item) => item.band === "0-2d" || item.band === "3-7d")
+    .reduce((sum, item) => sum + item.count, 0);
+  const invoiceCount = aggregates.invoiceSignals?.invoice_count ?? null;
 
-  const latencyDistribution = aggregates.latency_distribution.filter(
-    (item) => item.count > 0
-  );
+  const statusBreakdown = aggregates.invoiceSignals
+    ? Object.fromEntries(
+        aggregates.invoiceSignals.status_distribution.map((item) => [
+          item.status,
+          item.count,
+        ])
+      )
+    : null;
 
-  const result: SnapshotResult = {
-    meta: {
-      snapshot_id,
-      source_id,
-      generated_at: now,
-      estimate_count: aggregates.estimate_count,
-      confidence_level: confidenceLevel,
-      invoice_count: aggregates.invoiceSignals?.invoice_count,
+  return {
+    kind: "snapshot",
+    window_days: WINDOW_DAYS,
+    signals: {
+      source_tools: aggregates.source_tool ? [aggregates.source_tool] : [],
+      totals: {
+        estimates: aggregates.estimate_count,
+        invoices: invoiceCount,
+      },
+      status_breakdown: statusBreakdown,
     },
-    demand: {
-      weekly_volume: aggregates.weekly_volume,
-      price_distribution: priceDistribution,
+    scores: {
+      demand_signal: Math.min(100, Math.round((aggregates.estimate_count / 60) * 100)),
+      cash_signal:
+        invoiceCount === null
+          ? 0
+          : Math.min(
+              100,
+              Math.round((invoiceCount / Math.max(aggregates.estimate_count, 1)) * 100)
+            ),
+      decision_latency:
+        totalLatency === 0 ? 0 : Math.round((fastLatency / totalLatency) * 100),
+      capacity_pressure: Math.min(
+        100,
+        Math.round((aggregates.weekly_volume.slice(-4).reduce((sum, item) => sum + item.count, 0) / Math.max(aggregates.estimate_count, 1)) * 100)
+      ),
+      confidence: confidenceLevel,
     },
-    decision_latency: {
-      distribution: latencyDistribution,
-    },
+    findings: [
+      {
+        title: "Deterministic fallback",
+        detail: "Snapshot generated without the model based on aggregate signals.",
+      },
+    ],
+    next_steps: [
+      {
+        label: "Review signal coverage",
+        why: "Ensure recent estimates and invoices are connected for sharper scoring.",
+      },
+    ],
+    disclaimers: ["Signals are aggregated. No customer data is included."],
   };
-
-  // Add invoice signals if available
-  if (aggregates.invoiceSignals) {
-    result.invoiceSignals = {
-      price_distribution: aggregates.invoiceSignals.price_distribution.filter(
-        (item) => item.count > 0
-      ),
-      time_to_invoice: aggregates.invoiceSignals.time_to_invoice.filter(
-        (item) => item.count > 0
-      ),
-      status_distribution: aggregates.invoiceSignals.status_distribution.filter(
-        (item) => item.count > 0
-      ),
-      weekly_volume: aggregates.invoiceSignals.weekly_volume,
-    };
-  }
-
-  return result;
 }
 
 /**

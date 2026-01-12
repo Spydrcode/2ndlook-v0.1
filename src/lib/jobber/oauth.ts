@@ -1,4 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getConnection } from "@/lib/oauth/connections";
+import { encrypt } from "@/lib/security/crypto";
 
 export interface JobberTokens {
   access_token: string;
@@ -16,18 +18,10 @@ export async function refreshJobberToken(
   installationId: string
 ): Promise<JobberTokens | null> {
   try {
-    const supabase = createAdminClient();
+    const connection = await getConnection(installationId, "jobber");
 
-    // Get current tokens
-    const { data: connection, error: fetchError } = await supabase
-      .from("oauth_connections")
-      .select("refresh_token")
-      .eq("installation_id", installationId)
-      .eq("tool", "jobber")
-      .single();
-
-    if (fetchError || !connection) {
-      console.error("Failed to fetch OAuth connection:", fetchError);
+    if (!connection || !connection.refresh_token) {
+      console.error("Failed to fetch OAuth connection");
       return null;
     }
 
@@ -72,13 +66,15 @@ export async function refreshJobberToken(
     const { error: updateError } = await supabase
       .from("oauth_connections")
       .update({
-        access_token,
-        refresh_token: refresh_token || connection.refresh_token,
-        expires_at: expiresAt,
+        access_token_enc: encrypt(access_token),
+        refresh_token_enc: refresh_token
+          ? encrypt(refresh_token)
+          : encrypt(connection.refresh_token),
+        token_expires_at: expiresAt,
         updated_at: new Date().toISOString(),
       })
       .eq("installation_id", installationId)
-      .eq("tool", "jobber");
+      .eq("provider", "jobber");
 
     if (updateError) {
       console.error("Failed to update tokens:", updateError);
@@ -105,27 +101,20 @@ export async function getJobberAccessToken(
   installationId: string
 ): Promise<string | null> {
   try {
-    const supabase = createAdminClient();
-
-    // Get current tokens
-    const { data: connection, error: fetchError } = await supabase
-      .from("oauth_connections")
-      .select("access_token, expires_at")
-      .eq("installation_id", installationId)
-      .eq("tool", "jobber")
-      .single();
-
-    if (fetchError || !connection) {
-      console.error("Failed to fetch OAuth connection:", fetchError);
+    const connection = await getConnection(installationId, "jobber");
+    if (!connection) {
+      console.error("Failed to fetch OAuth connection");
       return null;
     }
 
     // Check if token is expired (with 5min buffer)
-    const expiresAt = new Date(connection.expires_at);
+    const expiresAt = connection.token_expires_at
+      ? new Date(connection.token_expires_at)
+      : null;
     const now = new Date();
     const bufferMs = 5 * 60 * 1000; // 5 minutes
 
-    if (expiresAt.getTime() - now.getTime() < bufferMs) {
+    if (!expiresAt || expiresAt.getTime() - now.getTime() < bufferMs) {
       // Token expired or about to expire, refresh it
       const newTokens = await refreshJobberToken(installationId);
       if (!newTokens) {

@@ -1,10 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
+import { getMinMeaningfulEstimates, WINDOW_DAYS } from "@/lib/config/limits";
 import { MEANINGFUL_ESTIMATE_STATUSES } from "@/lib/ingest/statuses";
 import type {
   EstimateBucket,
   ConfidenceLevel,
   SnapshotResult,
+  SnapshotOutput,
 } from "@/types/2ndlook";
 
 /**
@@ -25,39 +26,81 @@ export function generateDeterministicSnapshot(
   estimateCount: number,
   confidenceLevel: ConfidenceLevel
 ): SnapshotResult {
-  const now = new Date().toISOString();
-
-  // Build price distribution
-  const priceDistribution = [
-    { band: "<500", count: bucket.price_band_lt_500 },
-    { band: "500-1500", count: bucket.price_band_500_1500 },
-    { band: "1500-5000", count: bucket.price_band_1500_5000 },
-    { band: "5000+", count: bucket.price_band_5000_plus },
-  ].filter((item) => item.count > 0);
-
-  // Build latency distribution
-  const latencyDistribution = [
-    { band: "0-2d", count: bucket.latency_band_0_2 },
-    { band: "3-7d", count: bucket.latency_band_3_7 },
-    { band: "8-21d", count: bucket.latency_band_8_21 },
-    { band: "22+d", count: bucket.latency_band_22_plus },
-  ].filter((item) => item.count > 0);
-
+  const totalLatency =
+    bucket.latency_band_0_2 +
+    bucket.latency_band_3_7 +
+    bucket.latency_band_8_21 +
+    bucket.latency_band_22_plus;
+  const fastLatency = bucket.latency_band_0_2 + bucket.latency_band_3_7;
   return {
-    meta: {
-      snapshot_id: "", // Will be set after insert
-      source_id: sourceId,
-      generated_at: now,
-      estimate_count: estimateCount,
-      confidence_level: confidenceLevel,
+    kind: "snapshot",
+    window_days: WINDOW_DAYS,
+    signals: {
+      source_tools: [],
+      totals: {
+        estimates: estimateCount,
+        invoices: null,
+      },
+      status_breakdown: null,
     },
-    demand: {
-      weekly_volume: bucket.weekly_volume,
-      price_distribution: priceDistribution,
+    scores: {
+      demand_signal: Math.min(100, Math.round((estimateCount / 60) * 100)),
+      cash_signal: 0,
+      decision_latency:
+        totalLatency === 0 ? 0 : Math.round((fastLatency / totalLatency) * 100),
+      capacity_pressure: Math.min(
+        100,
+        Math.round(
+          (bucket.weekly_volume.slice(-4).reduce((sum, item) => sum + item.count, 0) /
+            Math.max(estimateCount, 1)) *
+            100
+        )
+      ),
+      confidence: confidenceLevel,
     },
-    decision_latency: {
-      distribution: latencyDistribution,
+    findings: [
+      {
+        title: "Deterministic snapshot",
+        detail: "Signals are calculated from aggregated estimate buckets.",
+      },
+    ],
+    next_steps: [
+      {
+        label: "Connect more sources",
+        why: "Add invoices or more recent data for clearer signals.",
+      },
+    ],
+    disclaimers: ["Signals are aggregated. No customer data is included."],
+  };
+}
+
+function buildInsufficientDataSnapshot(
+  estimateCount: number,
+  requiredMinimum: number
+): SnapshotOutput {
+  return {
+    kind: "insufficient_data",
+    window_days: WINDOW_DAYS,
+    required_minimum: {
+      estimates: requiredMinimum,
+      invoices: null,
     },
+    found: {
+      estimates: estimateCount,
+      invoices: null,
+    },
+    what_you_can_do_next: [
+      {
+        label: "Collect more estimates",
+        detail: "We need more recent estimate activity to score reliably.",
+      },
+      {
+        label: "Reconnect once volume increases",
+        detail: "Reconnect after more sent/accepted estimates are available.",
+      },
+    ],
+    confidence: "low",
+    disclaimers: ["Not enough signal yet to produce a full snapshot."],
   };
 }
 
@@ -109,23 +152,19 @@ export async function runDeterministicSnapshot(params: {
     throw new Error(`Failed to get estimate count: ${countError?.message || "unknown"}`);
   }
 
-  // Enforce minimum constraint
-  if (estimateCount < MIN_MEANINGFUL_ESTIMATES_PROD) {
-    throw new Error(
-      `Minimum ${MIN_MEANINGFUL_ESTIMATES_PROD} meaningful estimates required for snapshot (found: ${estimateCount})`
-    );
-  }
-
   // Determine confidence level
   const confidenceLevel = getConfidenceLevel(estimateCount);
 
-  // Generate snapshot result
-  const snapshotResult = generateDeterministicSnapshot(
-    source_id,
-    bucket as EstimateBucket,
-    estimateCount,
-    confidenceLevel
-  );
+  const requiredMinimum = getMinMeaningfulEstimates();
+  const snapshotResult =
+    estimateCount < requiredMinimum
+      ? buildInsufficientDataSnapshot(estimateCount, requiredMinimum)
+      : generateDeterministicSnapshot(
+          source_id,
+          bucket as EstimateBucket,
+          estimateCount,
+          confidenceLevel
+        );
 
   // Store snapshot
   const { data: snapshot, error: snapshotError } = await supabase
@@ -133,7 +172,10 @@ export async function runDeterministicSnapshot(params: {
     .insert({
       source_id,
       estimate_count: estimateCount,
-      confidence_level: confidenceLevel,
+      confidence_level:
+        snapshotResult.kind === "snapshot"
+          ? snapshotResult.scores.confidence
+          : "low",
       result: snapshotResult,
     })
     .select("id")
@@ -143,24 +185,15 @@ export async function runDeterministicSnapshot(params: {
     throw new Error(`Failed to store snapshot: ${snapshotError?.message || "unknown"}`);
   }
 
-  // Update snapshot_id in result metadata
-  const updatedResult: SnapshotResult = {
-    ...snapshotResult,
-    meta: {
-      ...snapshotResult.meta,
-      snapshot_id: snapshot.id,
-    },
-  };
-
-  await supabase
-    .from("snapshots")
-    .update({ result: updatedResult })
-    .eq("id", snapshot.id);
-
   // Update source status
   await supabase
     .from("sources")
-    .update({ status: "snapshot_generated" })
+    .update({
+      status:
+        snapshotResult.kind === "snapshot"
+          ? "snapshot_generated"
+          : "insufficient_data",
+    })
     .eq("id", source_id);
 
   return {

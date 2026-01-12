@@ -35,9 +35,12 @@ const connectorPriority = [
   "housecall-pro",
 ];
 
+type ConnectionStatus = "connected" | "reconnect_required";
+
 export default function ConnectPage() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const [connectionStates, setConnectionStates] = useState<Record<string, ConnectionStatus>>({});
 
   useEffect(() => {
     const errorParam = searchParams.get("error");
@@ -45,6 +48,34 @@ export default function ConnectPage() {
       setError(errorParam);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadStatuses = async () => {
+      try {
+        const response = await fetch("/api/oauth/connections");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!isMounted || !data?.connections) return;
+        const statusMap: Record<string, ConnectionStatus> = {};
+        for (const item of data.connections) {
+          if (item?.provider && item?.status) {
+            statusMap[item.provider] = item.status as ConnectionStatus;
+          }
+        }
+        setConnectionStates(statusMap);
+      } catch {
+        // Silent failure - fallback to default UI
+      }
+    };
+
+    loadStatuses();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const connectors = useMemo(() => {
     const registry = listConnectors();
@@ -60,6 +91,11 @@ export default function ConnectPage() {
     const count = searchParams.get("count");
     const required = searchParams.get("required") || "25";
     const errorMessages: Record<string, string> = {
+      oauth_denied: "Authorization was canceled. Please try again when ready.",
+      oauth_state_invalid: "Security validation failed. Please try connecting again.",
+      oauth_exchange_failed: "Failed to complete OAuth exchange. Please try again.",
+      oauth_scope_insufficient: "Your account does not have the required access. Please check scopes and try again.",
+      oauth_provider_misconfigured: "OAuth configuration is missing. Please contact support.",
       oauth_config_missing: "Jobber OAuth is not configured. Please contact your administrator to set up JOBBER_CLIENT_ID and JOBBER_REDIRECT_URI.",
       oauth_start_failed: "Failed to start OAuth flow. Please try again.",
       jobber_state_mismatch: "Security validation failed. Please try connecting again.",
@@ -126,28 +162,50 @@ export default function ConnectPage() {
         {connectors.map((connector) => {
           const description = connectorDescriptions[connector.tool] || "Connect to see your signals.";
           const isAvailable = connector.isImplemented;
+          const status = connectionStates[connector.tool];
+          const needsReconnect = status === "reconnect_required";
+          const isConnected = status === "connected";
 
           return (
             <Card key={connector.tool} className="transition-colors hover:border-primary/70">
               <CardHeader className="space-y-2">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base">{connector.getDisplayName()}</CardTitle>
-                  {!isAvailable && (
+                  {needsReconnect ? (
+                    <Badge variant="secondary" className="text-xs">
+                      Reconnect required
+                    </Badge>
+                  ) : isConnected ? (
+                    <Badge variant="default" className="text-xs">
+                      Connected
+                    </Badge>
+                  ) : !isAvailable && (
                     <Badge variant="secondary" className="text-xs">
                       Soon
                     </Badge>
                   )}
                 </div>
-                <CardDescription>{description}</CardDescription>
+                <CardDescription>
+                  {description}
+                  {needsReconnect && (
+                    <span className="block text-xs text-muted-foreground">
+                      Your connection needs to be refreshed.
+                    </span>
+                  )}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Button
                   variant={isAvailable ? "default" : "outline"}
                   className="w-full"
-                  disabled={!isAvailable}
-                  onClick={() => handleConnect(connector.tool, isAvailable)}
+                  disabled={!isAvailable && !needsReconnect}
+                  onClick={() => handleConnect(connector.tool, isAvailable || needsReconnect)}
                 >
-                  {isAvailable ? `Connect ${connector.getDisplayName()}` : "Coming soon"}
+                  {needsReconnect
+                    ? `Reconnect ${connector.getDisplayName()}`
+                    : isAvailable
+                      ? `Connect ${connector.getDisplayName()}`
+                      : "Coming soon"}
                 </Button>
               </CardContent>
             </Card>

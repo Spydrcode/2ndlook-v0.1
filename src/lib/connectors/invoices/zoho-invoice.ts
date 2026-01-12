@@ -5,7 +5,7 @@ import { NotImplementedError } from "../connector";
 export class ZohoInvoiceConnector implements UniversalConnector {
   category = "invoices" as const;
   tool = "zoho-invoice" as const;
-  isImplemented = false;
+  isImplemented = true;
 
   getDisplayName(): string {
     return "Zoho Invoice";

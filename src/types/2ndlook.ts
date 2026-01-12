@@ -121,38 +121,50 @@ export interface Snapshot {
   user_id: string;
   estimate_count: number;
   confidence_level: ConfidenceLevel;
-  result: SnapshotResult;
+  result: SnapshotOutput;
   generated_at: string;
 }
 
-// Snapshot Result Schema (LOCKED)
 export interface SnapshotResult {
-  meta: {
-    snapshot_id: string;
-    source_id: string;
-    generated_at: string;
-    estimate_count: number;
-    confidence_level: ConfidenceLevel;
-    invoice_count?: number; // Optional: present when invoices are available
+  kind: "snapshot";
+  window_days: 90;
+  signals: {
+    source_tools: string[];
+    totals: {
+      estimates: number | null;
+      invoices: number | null;
+    };
+    status_breakdown: Record<string, number> | null;
   };
-  demand: {
-    weekly_volume: { week: string; count: number }[];
-    price_distribution: { band: string; count: number }[];
+  scores: {
+    demand_signal: number;
+    cash_signal: number;
+    decision_latency: number;
+    capacity_pressure: number;
+    confidence: ConfidenceLevel;
   };
-  decision_latency: {
-    distribution: { band: string; count: number }[];
-  };
-  invoiceSignals?: {
-    // Invoice totals by price band
-    price_distribution: { band: string; count: number }[];
-    // Time from estimate to invoice
-    time_to_invoice: { band: string; count: number }[];
-    // Invoice status distribution
-    status_distribution: { status: string; count: number }[];
-    // Invoice volume over time
-    weekly_volume: { week: string; count: number }[];
-  };
+  findings: Array<{ title: string; detail: string }>;
+  next_steps: Array<{ label: string; why: string }>;
+  disclaimers: string[];
 }
+
+export interface InsufficientDataResult {
+  kind: "insufficient_data";
+  window_days: 90;
+  required_minimum: {
+    estimates: number | null;
+    invoices: number | null;
+  };
+  found: {
+    estimates: number | null;
+    invoices: number | null;
+  };
+  what_you_can_do_next: Array<{ label: string; detail: string }>;
+  confidence: "low";
+  disclaimers: string[];
+}
+
+export type SnapshotOutput = SnapshotResult | InsufficientDataResult;
 
 // API Request/Response Types
 export interface IngestRequest {

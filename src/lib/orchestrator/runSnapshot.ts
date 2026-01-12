@@ -1,14 +1,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { generateSnapshotResult } from "@/lib/ai/openaiClient";
+import { generateDecisionSnapshot } from "@/lib/openai/snapshot";
 import { createMCPClient } from "@/lib/mcp/client";
-import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
+import { WINDOW_DAYS } from "@/lib/config/limits";
 import {
   buildDeterministicSnapshot,
   validateBucketedAggregates,
-  getConfidenceLevel,
 } from "@/lib/orchestrator/deterministicSnapshot";
 import { validateSnapshotResult } from "@/lib/orchestrator/validator";
-import type { SnapshotResult } from "@/types/2ndlook";
+import type { SnapshotOutput, ConfidenceLevel } from "@/types/2ndlook";
 
 /**
  * Orchestrator for 2ndlook v0.1 snapshot pipeline
@@ -17,7 +16,7 @@ import type { SnapshotResult } from "@/types/2ndlook";
  * SAFETY RULES (ENFORCED):
  * 1. Agent never sees raw estimate rows (bucket-only via MCP)
  * 2. Agent input is bucketed aggregates only
- * 3. Agent output is JSON-only, matching SnapshotResult schema
+ * 3. Agent output is JSON-only, matching SnapshotOutput schema
  * 4. Max 1 agent call per snapshot (v0.1)
  * 5. No DB schema changes
  *
@@ -89,44 +88,30 @@ export async function runSnapshotOrchestrator(
     // Validate aggregates structure
     validateBucketedAggregates(aggregates);
 
-    // Enforce minimum constraint
-    if (aggregates.estimate_count < MIN_MEANINGFUL_ESTIMATES_PROD) {
-      throw new Error(
-        `Minimum ${MIN_MEANINGFUL_ESTIMATES_PROD} meaningful estimates required for snapshot (found: ${aggregates.estimate_count})`
-      );
-    }
+    // Step 3: Prepare safe agent input (aggregates only)
+    const invoiceStatusCounts = aggregates.invoiceSignals
+      ? Object.fromEntries(
+          aggregates.invoiceSignals.status_distribution.map((item) => [
+            item.status,
+            item.count,
+          ])
+        )
+      : undefined;
 
-    // Step 3: Prepare safe agent input (bucket-only)
-    const confidenceLevel = getConfidenceLevel(aggregates.estimate_count);
-    
     const agentInput = {
-      source_id: aggregates.source_id,
-      source_tool: aggregates.source_tool || null,
-      demand: {
-        weekly_volume: aggregates.weekly_volume,
-        price_distribution: aggregates.price_distribution,
+      windowDays: WINDOW_DAYS,
+      connectorTools: aggregates.source_tool ? [aggregates.source_tool] : [],
+      estimateSignals: {
+        countsByStatus: {},
+        totals: { estimates: aggregates.estimate_count },
       },
-      decision_latency: {
-        distribution: aggregates.latency_distribution,
-      },
-      estimate_count: aggregates.estimate_count,
-      confidence_level: confidenceLevel,
-      date_range: aggregates.date_range || {
-        earliest: new Date().toISOString(),
-        latest: new Date().toISOString(),
-      },
-      // Include invoice signals if available
-      invoiceSignals: aggregates.invoiceSignals,
+      invoiceSignals: aggregates.invoiceSignals
+        ? {
+            countsByStatus: invoiceStatusCounts ?? {},
+            totals: { invoices: aggregates.invoiceSignals.invoice_count },
+          }
+        : undefined,
     };
-
-    // Log invoice availability
-    if (aggregates.invoiceSignals) {
-      console.log("[Orchestrator] Invoice signals available:", {
-        invoice_count: aggregates.invoiceSignals.invoice_count,
-      });
-    } else {
-      console.log("[Orchestrator] Estimate-only mode (no invoice data)");
-    }
 
     // Step 4: Try orchestrated generation with OpenAI (max 1 call)
     console.log("[Orchestrator] Calling OpenAI for snapshot generation:", {
@@ -134,11 +119,11 @@ export async function runSnapshotOrchestrator(
       estimate_count: aggregates.estimate_count,
     });
 
-    let snapshotResult: SnapshotResult;
+    let snapshotResult: SnapshotOutput;
 
     try {
       // OpenAI call (max 1 per v0.1 constraint)
-      snapshotResult = await generateSnapshotResult(agentInput);
+      snapshotResult = await generateDecisionSnapshot(agentInput);
 
       // Validate LLM output matches schema
       validateSnapshotResult(snapshotResult);
@@ -174,26 +159,40 @@ export async function runSnapshotOrchestrator(
       result_json: snapshotResult,
     });
 
+    const estimateCount =
+      snapshotResult.kind === "snapshot"
+        ? snapshotResult.signals.totals.estimates ?? 0
+        : snapshotResult.found.estimates ?? 0;
+    const confidenceLevel: ConfidenceLevel =
+      snapshotResult.kind === "snapshot"
+        ? snapshotResult.scores.confidence
+        : "low";
+
     // Step 6: Update snapshot record with metadata
     await supabase
       .from("snapshots")
       .update({
-        estimate_count: snapshotResult.meta.estimate_count,
-        confidence_level: snapshotResult.meta.confidence_level,
+        estimate_count: estimateCount,
+        confidence_level: confidenceLevel,
       })
       .eq("id", snapshot_id);
 
     // Step 7: Update source status
     await supabase
       .from("sources")
-      .update({ status: "snapshot_generated" })
+      .update({
+        status:
+          snapshotResult.kind === "snapshot"
+            ? "snapshot_generated"
+            : "insufficient_data",
+      })
       .eq("id", source_id);
 
     console.log("[Orchestrator] Snapshot pipeline complete:", {
       snapshot_id,
       source_id,
-      estimate_count: snapshotResult.meta.estimate_count,
-      confidence_level: snapshotResult.meta.confidence_level,
+      estimate_count: estimateCount,
+      confidence_level: confidenceLevel,
     });
 
     return {

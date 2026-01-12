@@ -9,8 +9,6 @@ import type {
 import { runSnapshotOrchestrator } from "@/lib/orchestrator/runSnapshot";
 import { runDeterministicSnapshot } from "@/lib/snapshot/deterministic";
 import { resolveSnapshotMode } from "@/lib/snapshot/modeSelection";
-import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
-import { MEANINGFUL_ESTIMATE_STATUSES } from "@/lib/ingest/statuses";
 import {
   logSnapshotEvent,
   recordSnapshotMetrics,
@@ -46,31 +44,6 @@ export async function POST(request: NextRequest) {
     if (source.status !== "bucketed" && source.status !== "insufficient_data") {
       return NextResponse.json(
         { error: "Source must be bucketed before snapshot generation" },
-        { status: 400 }
-      );
-    }
-
-    const { count: estimateCount, error: countError } = await supabase
-      .from("estimates_normalized")
-      .select("*", { count: "exact", head: true })
-      .eq("source_id", source_id)
-      .in("status", MEANINGFUL_ESTIMATE_STATUSES);
-
-    if (countError || estimateCount === null) {
-      return NextResponse.json(
-        { error: "Failed to verify estimate count" },
-        { status: 500 }
-      );
-    }
-
-    if (estimateCount < MIN_MEANINGFUL_ESTIMATES_PROD) {
-      return NextResponse.json(
-        {
-          error: `Minimum ${MIN_MEANINGFUL_ESTIMATES_PROD} meaningful estimates required for a full snapshot. Found: ${estimateCount}`,
-          code: "insufficient_data",
-          meaningful_estimates: estimateCount,
-          required_min: MIN_MEANINGFUL_ESTIMATES_PROD,
-        },
         { status: 400 }
       );
     }

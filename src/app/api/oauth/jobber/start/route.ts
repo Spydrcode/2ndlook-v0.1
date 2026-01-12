@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
 import { randomBytes } from "crypto";
+export const runtime = "nodejs";
 
 /**
  * Jobber OAuth Start Route (NO-LOGIN MODE)
@@ -9,7 +10,8 @@ import { randomBytes } from "crypto";
  * Uses installation_id instead of user authentication
  */
 export async function GET(request: NextRequest) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
+  const appUrl =
+    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
   try {
     // Get or create installation_id (no login required)
     const installationId = await getOrCreateInstallationId();
@@ -40,13 +42,6 @@ export async function GET(request: NextRequest) {
     // Create response with redirect
     const response = NextResponse.redirect(authUrl.toString());
 
-    console.log("[JOBBER START] Setting OAuth cookies:", {
-      state,
-      installationId,
-      secure: process.env.NODE_ENV === "production",
-      domain: request.nextUrl.hostname
-    });
-
     // Store state in HttpOnly cookie (10 minute expiry)
     response.cookies.set("jobber_oauth_state", state, {
       httpOnly: true,
@@ -65,7 +60,6 @@ export async function GET(request: NextRequest) {
       path: "/",
     });
 
-    console.log("[JOBBER START] Redirecting to Jobber OAuth:", authUrl.toString());
     return response;
   } catch (error) {
     console.error("Jobber OAuth start error:", error);

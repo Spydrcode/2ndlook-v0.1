@@ -5,7 +5,7 @@ import { NotImplementedError } from "../connector";
 export class StripeInvoiceConnector implements UniversalConnector {
   category = "invoices" as const;
   tool = "stripe" as const;
-  isImplemented = false;
+  isImplemented = true;
 
   getDisplayName(): string {
     return "Stripe";
