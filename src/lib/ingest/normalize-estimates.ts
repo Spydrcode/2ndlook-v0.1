@@ -4,17 +4,22 @@
  */
 
 import type { CSVEstimateRow, EstimateNormalized } from "@/types/2ndlook";
-import { MAX_CLOSED_ESTIMATES, MAX_DAYS } from "@/lib/config/limits";
+import { MAX_ESTIMATE_RECORDS, WINDOW_DAYS } from "@/lib/config/limits";
+import {
+  MEANINGFUL_ESTIMATE_STATUSES,
+  normalizeEstimateStatus,
+} from "@/lib/ingest/statuses";
 
 export interface NormalizeResult {
   kept: number;
   rejected: number;
+  meaningful: number;
 }
 
 /**
  * Normalize and store estimate rows in the database.
- * Enforces: closed/accepted only, 90 day window, max 100 records.
- * Does NOT enforce minimum - caller should check kept >= getMinClosedEstimates().
+ * Enforces: 90 day window, max 100 records.
+ * Does NOT enforce minimum - caller should check kept >= getMinMeaningfulEstimates().
  */
 export async function normalizeAndStore(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,30 +28,26 @@ export async function normalizeAndStore(
   rows: CSVEstimateRow[]
 ): Promise<NormalizeResult> {
   const now = new Date();
-  const cutoffDate = new Date(now.getTime() - MAX_DAYS * 24 * 60 * 60 * 1000);
+  const cutoffDate = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   const normalized: Omit<EstimateNormalized, "id">[] = [];
   let rejected = 0;
+  let meaningful = 0;
 
   for (const row of rows) {
-    // Enforce: closed or accepted only
-    const status = row.status.toLowerCase();
-    if (status !== "closed" && status !== "accepted") {
-      rejected++;
-      continue;
-    }
-
     // Parse dates
     const createdAt = new Date(row.created_at);
-    const closedAt = new Date(row.closed_at);
+    const closedAt = row.closed_at ? new Date(row.closed_at) : null;
+    const updatedAt = row.updated_at ? new Date(row.updated_at) : null;
 
-    if (Number.isNaN(createdAt.getTime()) || Number.isNaN(closedAt.getTime())) {
+    if (Number.isNaN(createdAt.getTime())) {
       rejected++;
       continue;
     }
 
     // Enforce: within 90 days
-    if (closedAt < cutoffDate) {
+    const activityDate = closedAt ?? updatedAt ?? createdAt;
+    if (Number.isNaN(activityDate.getTime()) || activityDate < cutoffDate) {
       rejected++;
       continue;
     }
@@ -59,20 +60,27 @@ export async function normalizeAndStore(
     }
 
     // Enforce: max 100 estimates
-    if (normalized.length >= MAX_CLOSED_ESTIMATES) {
+    if (normalized.length >= MAX_ESTIMATE_RECORDS) {
       rejected++;
       continue;
     }
+
+    const normalizedStatus = normalizeEstimateStatus(row.status);
 
     normalized.push({
       estimate_id: row.estimate_id,
       source_id: sourceId,
       created_at: createdAt.toISOString(),
-      closed_at: closedAt.toISOString(),
+      closed_at: closedAt ? closedAt.toISOString() : null,
+      updated_at: updatedAt ? updatedAt.toISOString() : null,
       amount,
-      status: status as "closed" | "accepted",
+      status: normalizedStatus,
       job_type: row.job_type || undefined,
     });
+
+    if (MEANINGFUL_ESTIMATE_STATUSES.includes(normalizedStatus)) {
+      meaningful++;
+    }
   }
 
   // Bulk insert
@@ -88,6 +96,7 @@ export async function normalizeAndStore(
 
   return {
     kept: normalized.length,
-    rejected: rejected + (rows.length - normalized.length - rejected),
+    rejected: rows.length - normalized.length,
+    meaningful,
   };
 }

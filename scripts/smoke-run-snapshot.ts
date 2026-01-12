@@ -22,21 +22,27 @@ import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { config } from "dotenv";
+import { randomUUID } from "crypto";
 
 // Load environment
 config({ path: ".env.local" });
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SNAPSHOT_MODE = process.env.SNAPSHOT_MODE || "deterministic";
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("❌ Missing environment variables:");
-  console.error("   NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY required");
+  console.error("   NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required");
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
 interface SnapshotResult {
   meta: {
@@ -88,22 +94,29 @@ async function runSmokeTest() {
   console.log(`Mode: ${SNAPSHOT_MODE}\n`);
 
   try {
-    // Step 1: Create test source
+    // Step 1: Create test source (no-login mode - use installation_id)
     console.log("📝 Step 1: Creating test source...");
     
-    const { data: authData } = await supabase.auth.getUser();
-    if (!authData?.user) {
-      console.error("❌ Not authenticated. Please sign in first.");
-      process.exit(1);
+    // Generate a test installation_id
+    const installation_id = randomUUID();
+    
+    // Create installation record
+    const { data: installation, error: installError } = await supabase
+      .from("installations")
+      .insert({ id: installation_id })
+      .select("id")
+      .single();
+
+    if (installError || !installation) {
+      throw new Error(`Failed to create installation: ${installError?.message}`);
     }
 
-    const user_id = authData.user.id;
     const source_name = `Smoke Test ${new Date().toISOString()}`;
 
-    const { data: source, error: sourceError } = await supabase
+    const { data: source, error: sourceError} = await supabase
       .from("sources")
       .insert({
-        user_id,
+        installation_id,
         source_type: "csv",
         source_name,
         status: "pending",

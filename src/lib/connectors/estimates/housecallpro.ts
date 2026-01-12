@@ -9,7 +9,7 @@ import { NotImplementedError } from "../connector";
 
 export class HousecallProConnector implements UniversalConnector {
   category = "estimates" as const;
-  tool = "housecallpro" as const;
+  tool = "housecall-pro" as const;
   isImplemented = false;
 
   getDisplayName(): string {

@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
 import type { IngestResponse, CSVEstimateRow } from "@/types/2ndlook";
 import { normalizeAndStore } from "@/lib/ingest/normalize-estimates";
-import { getMinClosedEstimates, MIN_CLOSED_ESTIMATES_PROD } from "@/lib/config/limits";
+import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,42 +46,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Normalize and filter
-    const { kept, rejected } = await normalizeAndStore(supabase, sourceId, rows);
-    const minClosedEstimates = getMinClosedEstimates();
+    const { kept, rejected, meaningful } = await normalizeAndStore(
+      supabase,
+      sourceId,
+      rows
+    );
 
-    // Enforce minimum constraint for ingestion
-    if (kept < minClosedEstimates) {
-      // Rollback: delete inserted estimates
-      await supabase
-        .from("estimates_normalized")
-        .delete()
-        .eq("source_id", sourceId);
-
-      return NextResponse.json(
-        {
-          error: `Minimum ${minClosedEstimates} closed estimates required. Found: ${kept}`,
+    await supabase
+      .from("sources")
+      .update({
+        status: "ingested",
+        metadata: {
+          meaningful_estimates: meaningful,
+          required_min: MIN_MEANINGFUL_ESTIMATES_PROD,
         },
-        { status: 400 }
-      );
-    }
-
-    if (kept < MIN_CLOSED_ESTIMATES_PROD) {
-      await supabase
-        .from("sources")
-        .update({
-          status: "insufficient_data",
-          metadata: {
-            closed_estimates: kept,
-            required_min: MIN_CLOSED_ESTIMATES_PROD,
-          },
-        })
-        .eq("id", sourceId);
-    } else {
-      await supabase
-        .from("sources")
-        .update({ status: "ingested" })
-        .eq("id", sourceId);
-    }
+      })
+      .eq("id", sourceId);
 
     const response: IngestResponse = {
       received: rows.length,
@@ -116,17 +96,12 @@ function parseCSV(text: string): CSVEstimateRow[] {
     });
 
     // Map to expected fields
-    if (
-      row.estimate_id &&
-      row.created_at &&
-      row.closed_at &&
-      row.amount &&
-      row.status
-    ) {
+    if (row.estimate_id && row.created_at && row.amount && row.status) {
       rows.push({
         estimate_id: row.estimate_id,
         created_at: row.created_at,
-        closed_at: row.closed_at,
+        closed_at: row.closed_at || null,
+        updated_at: row.updated_at || null,
         amount: row.amount,
         status: row.status,
         job_type: row.job_type || undefined,

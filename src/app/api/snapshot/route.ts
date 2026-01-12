@@ -9,7 +9,8 @@ import type {
 import { runSnapshotOrchestrator } from "@/lib/orchestrator/runSnapshot";
 import { runDeterministicSnapshot } from "@/lib/snapshot/deterministic";
 import { resolveSnapshotMode } from "@/lib/snapshot/modeSelection";
-import { MIN_CLOSED_ESTIMATES_PROD } from "@/lib/config/limits";
+import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
+import { MEANINGFUL_ESTIMATE_STATUSES } from "@/lib/ingest/statuses";
 import {
   logSnapshotEvent,
   recordSnapshotMetrics,
@@ -52,7 +53,8 @@ export async function POST(request: NextRequest) {
     const { count: estimateCount, error: countError } = await supabase
       .from("estimates_normalized")
       .select("*", { count: "exact", head: true })
-      .eq("source_id", source_id);
+      .eq("source_id", source_id)
+      .in("status", MEANINGFUL_ESTIMATE_STATUSES);
 
     if (countError || estimateCount === null) {
       return NextResponse.json(
@@ -61,13 +63,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (estimateCount < MIN_CLOSED_ESTIMATES_PROD) {
+    if (estimateCount < MIN_MEANINGFUL_ESTIMATES_PROD) {
       return NextResponse.json(
         {
-          error: `Minimum ${MIN_CLOSED_ESTIMATES_PROD} closed estimates required for a full snapshot. Found: ${estimateCount}`,
+          error: `Minimum ${MIN_MEANINGFUL_ESTIMATES_PROD} meaningful estimates required for a full snapshot. Found: ${estimateCount}`,
           code: "insufficient_data",
-          closed_estimates: estimateCount,
-          required_min: MIN_CLOSED_ESTIMATES_PROD,
+          meaningful_estimates: estimateCount,
+          required_min: MIN_MEANINGFUL_ESTIMATES_PROD,
         },
         { status: 400 }
       );

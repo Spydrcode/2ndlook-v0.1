@@ -9,9 +9,26 @@ export type SourceStatus =
   | "snapshot_generated"
   | "insufficient_data";
 
-export type EstimateStatus = "closed" | "accepted";
+export type EstimateStatus =
+  | "draft"
+  | "sent"
+  | "accepted"
+  | "declined"
+  | "expired"
+  | "cancelled"
+  | "converted"
+  | "unknown";
 
-export type InvoiceStatus = "draft" | "sent" | "void" | "paid" | "unpaid" | "overdue";
+export type InvoiceStatus =
+  | "draft"
+  | "sent"
+  | "void"
+  | "paid"
+  | "unpaid"
+  | "overdue"
+  | "refunded"
+  | "partial"
+  | "unknown";
 
 export type ConfidenceLevel = "low" | "medium" | "high";
 
@@ -28,7 +45,7 @@ export interface Source {
   created_at: string;
   status: SourceStatus;
   metadata?: {
-    closed_estimates?: number;
+    meaningful_estimates?: number;
     required_min?: number;
   } | null;
 }
@@ -38,7 +55,8 @@ export interface EstimateNormalized {
   estimate_id: string;
   source_id: string;
   created_at: string;
-  closed_at: string;
+  closed_at?: string | null;
+  updated_at?: string | null;
   amount: number;
   status: EstimateStatus;
   job_type?: string;
@@ -89,6 +107,9 @@ export interface InvoiceBucket {
   status_paid: number;
   status_unpaid: number;
   status_overdue: number;
+  status_refunded: number;
+  status_partial: number;
+  status_unknown: number;
   // Volume over time
   weekly_volume: { week: string; count: number }[];
   created_at: string;
@@ -169,7 +190,8 @@ export interface SnapshotResponse {
 export interface CSVEstimateRow {
   estimate_id: string;
   created_at: string;
-  closed_at: string;
+  closed_at?: string | null;
+  updated_at?: string | null;
   amount: string | number;
   status: string;
   job_type?: string;

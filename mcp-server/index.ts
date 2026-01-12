@@ -15,6 +15,8 @@ import type {
   SnapshotResult,
 } from "./types.js";
 
+const MEANINGFUL_ESTIMATE_STATUSES = ["sent", "accepted", "converted"];
+
 /**
  * 2ndlook MCP Server
  * 
@@ -169,7 +171,8 @@ async function handleGetBucketedAggregates(args: {
   const { count: estimateCount, error: countError } = await supabase
     .from("estimates_normalized")
     .select("*", { count: "exact", head: true })
-    .eq("source_id", args.source_id);
+    .eq("source_id", args.source_id)
+    .in("status", MEANINGFUL_ESTIMATE_STATUSES);
 
   if (countError) {
     throw new Error(`Failed to get estimate count: ${countError.message}`);
@@ -240,6 +243,9 @@ async function handleGetBucketedAggregates(args: {
         { status: "paid", count: typedInvoiceBucket.status_paid || 0 },
         { status: "unpaid", count: typedInvoiceBucket.status_unpaid || 0 },
         { status: "overdue", count: typedInvoiceBucket.status_overdue || 0 },
+        { status: "refunded", count: typedInvoiceBucket.status_refunded || 0 },
+        { status: "partial", count: typedInvoiceBucket.status_partial || 0 },
+        { status: "unknown", count: typedInvoiceBucket.status_unknown || 0 },
       ],
       weekly_volume: typedInvoiceBucket.weekly_volume || [],
     };

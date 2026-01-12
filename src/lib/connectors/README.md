@@ -36,9 +36,10 @@ All estimate connectors normalize to this shape:
 {
   estimate_id: string;      // Unique identifier
   created_at: string;       // ISO 8601 timestamp
-  closed_at: string;        // ISO 8601 timestamp
+  closed_at?: string | null; // ISO 8601 timestamp
+  updated_at?: string | null; // ISO 8601 timestamp
   amount: number;           // Dollar amount
-  status: "closed" | "accepted";
+  status: "draft" | "sent" | "accepted" | "declined" | "expired" | "cancelled" | "converted" | "unknown";
   job_type?: string | null; // Optional category
 }
 ```

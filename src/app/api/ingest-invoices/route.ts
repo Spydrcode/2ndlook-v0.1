@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
 import type { InvoiceCanonicalRow } from "@/lib/connectors";
+import { WINDOW_DAYS } from "@/lib/config/limits";
+import { normalizeInvoiceStatus } from "@/lib/ingest/statuses";
 
 interface InvoiceIngestResponse {
   received: number;
@@ -61,13 +63,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const validStatuses = ["draft", "sent", "void", "paid", "unpaid", "overdue"];
     const invoices: InvoiceCanonicalRow[] = [];
     let rejected = 0;
 
-    // Apply data limits: last 90 days OR max 100 invoices
+    // Apply data limits: last WINDOW_DAYS OR max 100 invoices
     const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - WINDOW_DAYS);
 
     for (let i = 1; i < lines.length; i++) {
       try {
@@ -78,23 +79,19 @@ export async function POST(request: NextRequest) {
           row[key] = values[idx];
         });
 
-        const status = row.invoice_status?.toLowerCase();
-        if (!validStatuses.includes(status)) {
-          rejected++;
-          continue;
-        }
-
         const invoiceDate = new Date(row.invoice_date);
         if (invoiceDate < ninetyDaysAgo) {
           rejected++;
           continue;
         }
 
+        const status = normalizeInvoiceStatus(row.invoice_status);
+
         invoices.push({
           invoice_id: row.invoice_id,
           invoice_date: row.invoice_date,
           invoice_total: Number.parseFloat(row.invoice_total || "0"),
-          invoice_status: status as InvoiceCanonicalRow["invoice_status"],
+          invoice_status: status,
           linked_estimate_id: row.linked_estimate_id || null,
         });
       } catch {

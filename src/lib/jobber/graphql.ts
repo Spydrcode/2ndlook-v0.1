@@ -1,5 +1,7 @@
 import { getJobberAccessToken } from "./oauth";
 import type { CSVEstimateRow } from "@/types/2ndlook";
+import { WINDOW_DAYS } from "@/lib/config/limits";
+import { normalizeEstimateStatus } from "@/lib/ingest/statuses";
 
 export interface JobberQuote {
   id: string;
@@ -10,13 +12,13 @@ export interface JobberQuote {
 }
 
 /**
- * Fetch closed/accepted quotes (estimates) from Jobber GraphQL API
+ * Fetch quotes (estimates) from Jobber GraphQL API
  * 
  * Returns data in CSVEstimateRow format for compatibility with shared normalization.
  * Field diet enforced: only id, dates, total, status
- * Filters: last 90 days, limit 100 records, closed/accepted status only
+ * Filters: last 90 days, limit 100 records
  */
-export async function fetchClosedEstimates(
+export async function fetchEstimates(
   installationId: string
 ): Promise<CSVEstimateRow[]> {
   try {
@@ -28,9 +30,9 @@ export async function fetchClosedEstimates(
     }
     console.log("[JOBBER GRAPHQL] Got access token, fetching quotes...");
 
-    // Calculate 90 days ago
+    // Calculate window start
     const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - WINDOW_DAYS);
     const dateFilter = ninetyDaysAgo.toISOString().split("T")[0];
 
     // Try edges { node } structure first (most common in GraphQL pagination)
@@ -109,24 +111,15 @@ export async function fetchClosedEstimates(
       console.log("[JOBBER RAW RESPONSE] First quote sample:", JSON.stringify(quotes[0], null, 2));
     }
 
-    // Map to CSVEstimateRow format and filter for closed/accepted
-    const estimateRows: CSVEstimateRow[] = quotes
-      .filter((quote) => {
-        // Only include if closedAt exists (must be closed)
-        if (!quote.closedAt) return false;
-        
-        // Map Jobber status to our canonical status
-        const status = normalizeJobberStatus(quote.status);
-        return status === "closed" || status === "accepted";
-      })
-      .map((quote) => ({
-        estimate_id: quote.id,
-        created_at: quote.createdAt,
-        closed_at: quote.closedAt as string, // Non-null after filter
-        amount: quote.total.amount,
-        status: normalizeJobberStatus(quote.status),
-        job_type: undefined, // Jobber doesn't provide job_type in field diet
-      }));
+    // Map to CSVEstimateRow format
+    const estimateRows: CSVEstimateRow[] = quotes.map((quote) => ({
+      estimate_id: quote.id,
+      created_at: quote.createdAt,
+      closed_at: quote.closedAt,
+      amount: quote.total.amount,
+      status: normalizeJobberStatus(quote.status),
+      job_type: undefined, // Jobber doesn't provide job_type in field diet
+    }));
 
     console.log("[JOBBER GRAPHQL] After filtering - estimateRows count:", estimateRows.length);
     if (estimateRows.length > 0) {
@@ -146,12 +139,5 @@ export async function fetchClosedEstimates(
  * Normalize Jobber quote status to 2ndlook canonical status
  */
 function normalizeJobberStatus(status: string): string {
-  const statusLower = status.toLowerCase();
-  
-  // Map Jobber statuses to canonical closed/accepted
-  if (statusLower === "approved" || statusLower === "converted") {
-    return "accepted";
-  }
-  
-  return "closed";
+  return normalizeEstimateStatus(status);
 }

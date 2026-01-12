@@ -7,6 +7,7 @@
 import type { UniversalConnector } from "../connector";
 import type { EstimateCanonicalRow } from "../types";
 import { NotImplementedError } from "../connector";
+import { normalizeEstimateStatus } from "@/lib/ingest/statuses";
 
 export class FileEstimateConnector implements UniversalConnector {
   category = "estimates" as const;
@@ -38,7 +39,7 @@ export class FileEstimateConnector implements UniversalConnector {
     const rows: EstimateCanonicalRow[] = [];
 
     // Required columns
-    const requiredColumns = ["estimate_id", "created_at", "closed_at", "amount", "status"];
+    const requiredColumns = ["estimate_id", "created_at", "amount", "status"];
     const missingColumns = requiredColumns.filter((col) => !header.includes(col));
     if (missingColumns.length > 0) {
       throw new Error(`Missing required columns: ${missingColumns.join(", ")}`);
@@ -60,11 +61,10 @@ export class FileEstimateConnector implements UniversalConnector {
       const canonicalRow: EstimateCanonicalRow = {
         estimate_id: row.estimate_id || `EST-${Date.now()}-${i}`,
         created_at: row.created_at || new Date().toISOString(),
-        closed_at: row.closed_at || new Date().toISOString(),
+        closed_at: row.closed_at || null,
+        updated_at: row.updated_at || null,
         amount: Number.parseFloat(row.amount || "0"),
-        status: (row.status?.toLowerCase() === "accepted" ? "accepted" : "closed") as
-          | "closed"
-          | "accepted",
+        status: normalizeEstimateStatus(row.status),
         job_type: row.job_type || null,
       };
 

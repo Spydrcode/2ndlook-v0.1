@@ -3,7 +3,7 @@
   "version": "2.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --hostname localhost",
     "build": "next build",
     "start": "next start",
     "lint": "biome lint",
@@ -17,7 +17,7 @@
     "mcp:build": "cd mcp-server && npx tsc",
     "mcp:start": "cd mcp-server && node dist/index.js",
     "mcp:test": "npx tsx mcp-server/test-client.ts",
-    "smoke:snapshot": "npx ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/smoke-run-snapshot.ts"
+    "smoke:snapshot": "npx tsx scripts/smoke-run-snapshot.ts"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx}": [

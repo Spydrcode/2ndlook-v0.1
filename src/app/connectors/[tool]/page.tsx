@@ -123,10 +123,13 @@ export default function ConnectorPage({ params }: ConnectorPageProps) {
 export function generateStaticParams() {
   return [
     { tool: "jobber" },
-    { tool: "servicetitan" },
-    { tool: "quickbooks" },
-    { tool: "square" },
-    { tool: "joist" },
     { tool: "housecall-pro" },
+    { tool: "stripe" },
+    { tool: "square" },
+    { tool: "paypal" },
+    { tool: "wave" },
+    { tool: "zoho-invoice" },
+    { tool: "paymo" },
+    { tool: "quickbooks" },
   ];
 }

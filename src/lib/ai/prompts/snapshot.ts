@@ -1,6 +1,6 @@
 /**
  * Snapshot analysis prompt builder
- * 
+ *
  * Generates context-aware prompts for snapshot analysis,
  * optionally including tool-specific language when a connector
  * source tool is known.
@@ -25,8 +25,8 @@ interface SnapshotPromptOptions {
 
 /**
  * Build snapshot analysis prompt with optional tool-aware wording
- * 
- * When tool is provided (e.g., "jobber", "servicetitan"), adjusts
+ *
+ * When tool is provided (e.g., "jobber", "housecall-pro"), adjusts
  * language to match the connector context without changing schema.
  */
 export function buildSnapshotPrompt(
@@ -79,11 +79,14 @@ Ensure all arrays match the input data exactly - no filtering, no adjustments.`;
 function formatToolName(tool: string): string {
   const toolNames: Record<string, string> = {
     jobber: "Jobber",
-    servicetitan: "ServiceTitan",
+    "housecall-pro": "Housecall Pro",
     quickbooks: "QuickBooks",
     square: "Square",
-    joist: "Joist",
-    "housecall-pro": "Housecall Pro",
+    stripe: "Stripe",
+    paypal: "PayPal",
+    wave: "Wave",
+    "zoho-invoice": "Zoho Invoice",
+    paymo: "Paymo",
   };
 
   return toolNames[tool.toLowerCase()] || tool;

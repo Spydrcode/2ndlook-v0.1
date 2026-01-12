@@ -4,34 +4,28 @@
  */
 
 import { registerConnector } from "./connector";
-import { FileEstimateConnector } from "./estimates/fileConnector";
-import { ServiceTitanConnector } from "./estimates/servicetitan";
 import { JobberConnector } from "./estimates/jobber";
-import { QuickBooksConnector } from "./estimates/quickbooks";
-import { SquareConnector } from "./estimates/square";
-import { JoistConnector } from "./estimates/joist";
 import { HousecallProConnector } from "./estimates/housecallpro";
-import { FileInvoiceConnector } from "./invoices/fileConnector";
-import { JobberInvoiceConnector } from "./invoices/jobber";
 import { QuickBooksInvoiceConnector } from "./invoices/quickbooks";
-import { ServiceTitanInvoiceConnector } from "./invoices/servicetitan";
 import { SquareInvoiceConnector } from "./invoices/square";
+import { StripeInvoiceConnector } from "./invoices/stripe";
+import { PayPalInvoiceConnector } from "./invoices/paypal";
+import { WaveInvoiceConnector } from "./invoices/wave";
+import { ZohoInvoiceConnector } from "./invoices/zoho-invoice";
+import { PaymoInvoiceConnector } from "./invoices/paymo";
 
-// Register all estimate connectors
-registerConnector(new FileEstimateConnector());
-registerConnector(new ServiceTitanConnector());
+// Register approved estimate connectors
 registerConnector(new JobberConnector());
-registerConnector(new QuickBooksConnector());
-registerConnector(new SquareConnector());
-registerConnector(new JoistConnector());
 registerConnector(new HousecallProConnector());
 
-// Register all invoice connectors
-registerConnector(new FileInvoiceConnector());
-registerConnector(new JobberInvoiceConnector());
-registerConnector(new QuickBooksInvoiceConnector());
-registerConnector(new ServiceTitanInvoiceConnector());
+// Register approved invoice connectors
+registerConnector(new StripeInvoiceConnector());
 registerConnector(new SquareInvoiceConnector());
+registerConnector(new PayPalInvoiceConnector());
+registerConnector(new WaveInvoiceConnector());
+registerConnector(new ZohoInvoiceConnector());
+registerConnector(new PaymoInvoiceConnector());
+registerConnector(new QuickBooksInvoiceConnector());
 
 // Re-export registry functions for convenience
 export {

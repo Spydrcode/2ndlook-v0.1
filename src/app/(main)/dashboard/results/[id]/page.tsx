@@ -116,12 +116,12 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
           </Badge>
         </div>
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span>{meta.estimate_count} closed estimates</span>
+          <span>{meta.estimate_count} meaningful estimates</span>
           <span>•</span>
           <span>{formatDate(meta.generated_at)}</span>
         </div>
         <p className="text-sm text-muted-foreground">
-          Closed estimates only. No customer or line-item details.
+          Meaningful estimates only. No customer or line-item details.
         </p>
       </div>
 
@@ -129,7 +129,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
       <Card>
         <CardHeader>
           <CardTitle>Demand</CardTitle>
-          <CardDescription>Distribution of closed estimates</CardDescription>
+          <CardDescription>Distribution of meaningful estimates</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Price distribution */}
@@ -170,7 +170,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
       <Card>
         <CardHeader>
           <CardTitle>Decision latency</CardTitle>
-          <CardDescription>Time from estimate created to closed</CardDescription>
+          <CardDescription>Time from estimate created to decision</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-2">

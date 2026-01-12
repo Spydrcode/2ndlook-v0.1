@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { MIN_CLOSED_ESTIMATES_PROD } from "@/lib/config/limits";
+import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
+import { MEANINGFUL_ESTIMATE_STATUSES } from "@/lib/ingest/statuses";
 import type {
   EstimateBucket,
   ConfidenceLevel,
@@ -101,16 +102,17 @@ export async function runDeterministicSnapshot(params: {
   const { count: estimateCount, error: countError } = await supabase
     .from("estimates_normalized")
     .select("*", { count: "exact", head: true })
-    .eq("source_id", source_id);
+    .eq("source_id", source_id)
+    .in("status", MEANINGFUL_ESTIMATE_STATUSES);
 
   if (countError || estimateCount === null) {
     throw new Error(`Failed to get estimate count: ${countError?.message || "unknown"}`);
   }
 
   // Enforce minimum constraint
-  if (estimateCount < MIN_CLOSED_ESTIMATES_PROD) {
+  if (estimateCount < MIN_MEANINGFUL_ESTIMATES_PROD) {
     throw new Error(
-      `Minimum ${MIN_CLOSED_ESTIMATES_PROD} estimates required for snapshot (found: ${estimateCount})`
+      `Minimum ${MIN_MEANINGFUL_ESTIMATES_PROD} meaningful estimates required for snapshot (found: ${estimateCount})`
     );
   }
 

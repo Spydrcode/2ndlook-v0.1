@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
 import type { BucketRequest, BucketResponse, EstimateNormalized } from "@/types/2ndlook";
+import { MEANINGFUL_ESTIMATE_STATUSES } from "@/lib/ingest/statuses";
 
 export async function POST(request: NextRequest) {
   try {
@@ -129,9 +130,19 @@ function bucketEstimates(estimates: EstimateNormalized[]) {
   const weeklyMap = new Map<string, number>();
 
   for (const estimate of estimates) {
+    if (!MEANINGFUL_ESTIMATE_STATUSES.includes(estimate.status)) {
+      continue;
+    }
+
     const amount = estimate.amount;
     const createdAt = new Date(estimate.created_at);
-    const closedAt = new Date(estimate.closed_at);
+    const closedAt = estimate.closed_at ? new Date(estimate.closed_at) : null;
+    const updatedAt = estimate.updated_at ? new Date(estimate.updated_at) : null;
+    const activityDate = closedAt ?? updatedAt ?? createdAt;
+
+    if (Number.isNaN(createdAt.getTime()) || Number.isNaN(activityDate.getTime())) {
+      continue;
+    }
 
     // Price bands
     if (amount < 500) {
@@ -145,21 +156,23 @@ function bucketEstimates(estimates: EstimateNormalized[]) {
     }
 
     // Decision latency (days)
-    const latencyMs = closedAt.getTime() - createdAt.getTime();
-    const latencyDays = Math.floor(latencyMs / (1000 * 60 * 60 * 24));
+    if (closedAt && !Number.isNaN(closedAt.getTime())) {
+      const latencyMs = closedAt.getTime() - createdAt.getTime();
+      const latencyDays = Math.floor(latencyMs / (1000 * 60 * 60 * 24));
 
-    if (latencyDays <= 2) {
-      latencyBand02++;
-    } else if (latencyDays <= 7) {
-      latencyBand37++;
-    } else if (latencyDays <= 21) {
-      latencyBand821++;
-    } else {
-      latencyBand22Plus++;
+      if (latencyDays <= 2) {
+        latencyBand02++;
+      } else if (latencyDays <= 7) {
+        latencyBand37++;
+      } else if (latencyDays <= 21) {
+        latencyBand821++;
+      } else {
+        latencyBand22Plus++;
+      }
     }
 
     // Weekly volume (ISO week)
-    const weekKey = getISOWeek(closedAt);
+    const weekKey = getISOWeek(activityDate);
     weeklyMap.set(weekKey, (weeklyMap.get(weekKey) || 0) + 1);
   }
 

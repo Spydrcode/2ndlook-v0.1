@@ -113,7 +113,7 @@ export default async function SnapshotsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Snapshots</h1>
         <p className="text-muted-foreground">Recent snapshots you've created</p>
         <p className="text-sm text-muted-foreground">
-          Closed estimates only. No customer or line-item details.
+          Meaningful estimates only. No customer or line-item details.
         </p>
       </div>
 
@@ -138,7 +138,7 @@ export default async function SnapshotsPage() {
                   <TableCell className="font-medium">
                     {formatDate(snapshot.generated_at)}
                   </TableCell>
-                  <TableCell>{snapshot.estimate_count} closed</TableCell>
+                  <TableCell>{snapshot.estimate_count} meaningful</TableCell>
                   <TableCell>
                     <Badge variant={getConfidenceBadgeVariant(snapshot.confidence_level)}>
                       {snapshot.confidence_level}

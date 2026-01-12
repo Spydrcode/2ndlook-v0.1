@@ -3,34 +3,20 @@
  * These types define the normalized data shapes that all connectors must produce.
  */
 
-export type ConnectorCategory = "estimates" | "invoices" | "calendar" | "crm";
+export type ConnectorCategory = "estimates" | "invoices";
 
-export type EstimateConnectorTool =
-  | "file"
-  | "servicetitan"
-  | "jobber"
-  | "quickbooks"
-  | "square"
-  | "joist"
-  | "housecallpro";
+export type EstimateConnectorTool = "jobber" | "housecall-pro";
 
 export type InvoiceConnectorTool =
-  | "file"
-  | "jobber"
-  | "quickbooks"
-  | "servicetitan"
-  | "square";
+  | "stripe"
+  | "square"
+  | "paypal"
+  | "wave"
+  | "zoho-invoice"
+  | "paymo"
+  | "quickbooks";
 
-export type CalendarConnectorTool =
-  | "google-calendar"
-  | "outlook"
-  | "apple-calendar"
-  | "calendly"
-  | "cal-com";
-
-export type CrmConnectorTool = "hubspot" | "highlevel" | "pipedrive" | "salesforce";
-
-export type ConnectorTool = EstimateConnectorTool | InvoiceConnectorTool | CalendarConnectorTool | CrmConnectorTool;
+export type ConnectorTool = EstimateConnectorTool | InvoiceConnectorTool;
 
 /**
  * Canonical estimate row.
@@ -39,9 +25,18 @@ export type ConnectorTool = EstimateConnectorTool | InvoiceConnectorTool | Calen
 export interface EstimateCanonicalRow {
   estimate_id: string;
   created_at: string; // ISO 8601
-  closed_at: string; // ISO 8601
+  closed_at?: string | null; // ISO 8601
+  updated_at?: string | null; // ISO 8601
   amount: number;
-  status: "closed" | "accepted";
+  status:
+    | "draft"
+    | "sent"
+    | "accepted"
+    | "declined"
+    | "expired"
+    | "cancelled"
+    | "converted"
+    | "unknown";
   job_type?: string | null;
 }
 
@@ -54,7 +49,16 @@ export interface InvoiceCanonicalRow {
   invoice_id: string; // Opaque identifier
   invoice_date: string; // ISO 8601
   invoice_total: number;
-  invoice_status: "draft" | "sent" | "void" | "paid" | "unpaid" | "overdue";
+  invoice_status:
+    | "draft"
+    | "sent"
+    | "void"
+    | "paid"
+    | "unpaid"
+    | "overdue"
+    | "refunded"
+    | "partial"
+    | "unknown";
   linked_estimate_id?: string | null; // Optional link to estimate
 }
 

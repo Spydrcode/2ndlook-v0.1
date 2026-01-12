@@ -1,7 +1,7 @@
 /**
  * Copy map for connector-specific landing pages
  * Used by /connectors/[tool] dynamic route
- * 
+ *
  * RULES:
  * - No AI/LLM/agent mentions
  * - Quiet Founder tone
@@ -17,8 +17,8 @@ export interface ConnectorCopy {
 
 export const connectorLandingCopy: Record<string, ConnectorCopy> = {
   jobber: {
-    heroTitle: "For Jobber users who already have the numbers — but still carry the decisions.",
-    heroSubtitle: "2ndlook turns recent closed estimates into a clear snapshot of what's happening, without adding more tools.",
+    heroTitle: "For Jobber users who already have the numbers but still carry the decisions.",
+    heroSubtitle: "2ndlook turns recent estimates into a clear snapshot of what's happening, without adding more tools.",
     whatThisShows: [
       "Which price ranges close fastest",
       "How long decisions really take",
@@ -30,25 +30,11 @@ export const connectorLandingCopy: Record<string, ConnectorCopy> = {
       "Doesn't stay connected",
     ],
   },
-  servicetitan: {
-    heroTitle: "ServiceTitan shows performance. 2ndlook shows patterns.",
-    heroSubtitle: "A calm snapshot from closed estimates — so you can see decision timing and demand shifts earlier.",
-    whatThisShows: [
-      "Decision latency across price ranges",
-      "Weekly demand signals (without reports)",
-      "Where the business is tightening or loosening",
-    ],
-    whatItDoesntDo: [
-      "Doesn't replace ServiceTitan",
-      "Doesn't pull customer or line-item details",
-      "No long-term connection required",
-    ],
-  },
   quickbooks: {
     heroTitle: "QuickBooks tracks money. 2ndlook shows decision pressure.",
-    heroSubtitle: "A one-time snapshot from closed estimates — so you can see what's forming before it becomes a problem.",
+    heroSubtitle: "A one-time snapshot from recent invoices so you can see what's forming before it becomes a problem.",
     whatThisShows: [
-      "Pricing bands that move fastest",
+      "Invoice amounts that move fastest",
       "Decision timelines you can finally see",
       "Weeks where demand is building or thinning",
     ],
@@ -59,10 +45,10 @@ export const connectorLandingCopy: Record<string, ConnectorCopy> = {
     ],
   },
   square: {
-    heroTitle: "For Square users quoting fast — and trying to stay ahead of the week.",
-    heroSubtitle: "2ndlook turns closed estimates into simple patterns: price, timing, and demand.",
+    heroTitle: "For Square users moving payments fast and trying to stay ahead of the week.",
+    heroSubtitle: "2ndlook turns recent invoices into simple patterns: price, timing, and demand.",
     whatThisShows: [
-      "What closes quickly vs what lingers",
+      "What gets paid quickly vs what lingers",
       "Price patterns that repeat",
       "Weekly demand signals (simple and clear)",
     ],
@@ -72,23 +58,9 @@ export const connectorLandingCopy: Record<string, ConnectorCopy> = {
       "No long-term connection required",
     ],
   },
-  joist: {
-    heroTitle: "For Joist users who live in estimates — and still don't get a clean picture.",
-    heroSubtitle: "2ndlook gives you a snapshot of what's closing, how long it takes, and where demand is shifting.",
-    whatThisShows: [
-      "Which estimates convert reliably",
-      "How long decisions take by price range",
-      "Weekly demand signals you can trust",
-    ],
-    whatItDoesntDo: [
-      "Doesn't change Joist",
-      "Doesn't use customer or line-item details",
-      "No long-term connection required",
-    ],
-  },
   "housecall-pro": {
-    heroTitle: "For Housecall Pro users running the day — and still needing a step back.",
-    heroSubtitle: "A snapshot from closed estimates that helps you see timing and demand without more dashboards.",
+    heroTitle: "For Housecall Pro users running the day and still needing a step back.",
+    heroSubtitle: "A snapshot from recent estimates that helps you see timing and demand without more dashboards.",
     whatThisShows: [
       "Decision timing you can plan around",
       "Price bands that behave differently",
@@ -100,12 +72,82 @@ export const connectorLandingCopy: Record<string, ConnectorCopy> = {
       "No long-term connection required",
     ],
   },
+  stripe: {
+    heroTitle: "Stripe handles payments. 2ndlook shows the patterns forming behind them.",
+    heroSubtitle: "A calm snapshot from recent invoices so you can see demand and decision timing without extra dashboards.",
+    whatThisShows: [
+      "Invoice amounts that move quickly",
+      "Decision timing by size",
+      "Weekly demand signals you can plan around",
+    ],
+    whatItDoesntDo: [
+      "Doesn't change Stripe",
+      "Doesn't use customer or line-item details",
+      "No long-term connection required",
+    ],
+  },
+  paypal: {
+    heroTitle: "PayPal moves the money. 2ndlook shows the pressure behind it.",
+    heroSubtitle: "One snapshot from recent invoices so you can see pricing and timing patterns clearly.",
+    whatThisShows: [
+      "What gets paid fast vs slow",
+      "Price bands that behave differently",
+      "Weekly demand signals (simple and clear)",
+    ],
+    whatItDoesntDo: [
+      "Doesn't change PayPal",
+      "Doesn't use customer or line-item details",
+      "No long-term connection required",
+    ],
+  },
+  wave: {
+    heroTitle: "Wave tracks invoices. 2ndlook shows the patterns.",
+    heroSubtitle: "A snapshot from recent invoices so you can see decision timing and demand shifts earlier.",
+    whatThisShows: [
+      "Which invoice amounts convert reliably",
+      "How long payments take by size",
+      "Weekly demand signals",
+    ],
+    whatItDoesntDo: [
+      "Doesn't change Wave",
+      "Doesn't use customer or line-item details",
+      "No long-term connection required",
+    ],
+  },
+  "zoho-invoice": {
+    heroTitle: "Zoho Invoice keeps records. 2ndlook shows decision pressure.",
+    heroSubtitle: "A one-time snapshot from recent invoices to see pricing and timing patterns without extra dashboards.",
+    whatThisShows: [
+      "Amounts that move quickly",
+      "Decision timelines you can actually see",
+      "Weekly demand signals",
+    ],
+    whatItDoesntDo: [
+      "Doesn't change Zoho Invoice",
+      "Doesn't use customer or line-item details",
+      "No long-term connection required",
+    ],
+  },
+  paymo: {
+    heroTitle: "Paymo helps you bill. 2ndlook shows the patterns behind each bill.",
+    heroSubtitle: "A snapshot from recent invoices so you can see where demand is tightening or loosening.",
+    whatThisShows: [
+      "Amounts that clear quickly",
+      "Decision timing by invoice size",
+      "Weekly demand signals (quiet, not noisy)",
+    ],
+    whatItDoesntDo: [
+      "Doesn't change Paymo",
+      "Doesn't use customer or line-item details",
+      "No long-term connection required",
+    ],
+  },
 };
 
 // Default fallback for unrecognized tools
 export const defaultConnectorCopy: ConnectorCopy = {
   heroTitle: "Connect & See",
-  heroSubtitle: "A decision snapshot from closed estimates.",
+  heroSubtitle: "A decision snapshot from recent estimates.",
   whatThisShows: [
     "Which price ranges close fastest",
     "How long decisions really take",
@@ -119,4 +161,4 @@ export const defaultConnectorCopy: ConnectorCopy = {
 };
 
 // Reassurance line (same for all pages)
-export const reassuranceLine = "Closed estimates only. No customer or line-item details.";
+export const reassuranceLine = "Signal-only. No customer or line-item details.";

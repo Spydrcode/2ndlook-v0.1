@@ -9,43 +9,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Supported estimate tools for v0.1 ingestion
-const SUPPORTED_ESTIMATE_TOOLS = [
-  "servicetitan",
-  "jobber",
-  "quickbooks",
-  "housecall-pro",
-  "square",
-  "joist",
-  "file",
-] as const;
+const SUPPORTED_ESTIMATE_TOOLS = ["jobber", "housecall-pro", "file"] as const;
 
 type SupportedEstimateTool = typeof SUPPORTED_ESTIMATE_TOOLS[number];
 
 const TOOL_LABELS: Record<string, string> = {
-  servicetitan: "ServiceTitan",
   jobber: "Jobber",
-  quickbooks: "QuickBooks",
   "housecall-pro": "Housecall Pro",
-  square: "Square",
-  joist: "Joist",
   file: "File",
 };
 
 const TOOL_DESCRIPTIONS: Record<string, string> = {
-  servicetitan:
-    "One-time import of recent closed estimates. This creates a snapshot without maintaining a long-term connection.",
   jobber:
-    "One-time import of recent closed estimates. This creates a snapshot without maintaining a long-term connection.",
-  quickbooks:
-    "One-time import of recent closed estimates. This creates a snapshot without maintaining a long-term connection.",
+    "One-time import of recent estimates. This creates a snapshot without maintaining a long-term connection.",
   "housecall-pro":
-    "One-time import of recent closed estimates. This creates a snapshot without maintaining a long-term connection.",
-  square:
-    "One-time import of recent closed estimates. This creates a snapshot without maintaining a long-term connection.",
-  joist:
-    "One-time import of recent closed estimates. This creates a snapshot without maintaining a long-term connection.",
+    "One-time import of recent estimates. This creates a snapshot without maintaining a long-term connection.",
   file:
-    "One-time import of recent closed estimates. This creates a snapshot without maintaining a long-term connection.",
+    "One-time import of recent estimates. This creates a snapshot without maintaining a long-term connection.",
 };
 
 function isSupportedEstimateTool(tool: string | null): tool is SupportedEstimateTool {
@@ -215,9 +195,9 @@ export default function ImportPage() {
       <Card>
         <CardHeader>
           <CardTitle>Upload export file</CardTitle>
-          <CardDescription>Closed estimates only</CardDescription>
+          <CardDescription>Recent estimates only</CardDescription>
           <p className="text-sm text-muted-foreground pt-2">
-            Closed estimates only. No customer or line-item details.
+            We normalize estimate status (sent/accepted/converted) and ignore customer or line-item details.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -296,7 +276,7 @@ export default function ImportPage() {
                     Rows received: {result.received}
                   </p>
                   <p className="text-sm">
-                    Closed estimates included: {result.kept}
+                    Estimates included: {result.kept}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     Rows not included: {result.rejected}

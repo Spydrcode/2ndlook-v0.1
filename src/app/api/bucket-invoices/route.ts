@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       .eq("source_id", source_id);
 
     const estimateMap = new Map(
-      (estimates || []).map((est) => [est.estimate_id, est.closed_at])
+      (estimates || []).map((est) => [est.estimate_id, est.closed_at ?? null])
     );
 
     // Apply bucketing rules
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
  */
 function bucketInvoices(
   invoices: InvoiceNormalized[],
-  estimateMap: Map<string, string>
+  estimateMap: Map<string, string | null>
 ): Omit<InvoiceBucket, "id" | "source_id" | "created_at"> {
   // Price band counters (same bands as estimates)
   let priceBandLt500 = 0;
@@ -150,6 +150,9 @@ function bucketInvoices(
   let statusPaid = 0;
   let statusUnpaid = 0;
   let statusOverdue = 0;
+  let statusRefunded = 0;
+  let statusPartial = 0;
+  let statusUnknown = 0;
 
   // Weekly volume map
   const weeklyMap = new Map<string, number>();
@@ -210,6 +213,16 @@ function bucketInvoices(
       case "overdue":
         statusOverdue++;
         break;
+      case "refunded":
+        statusRefunded++;
+        break;
+      case "partial":
+        statusPartial++;
+        break;
+      case "unknown":
+      default:
+        statusUnknown++;
+        break;
     }
 
     // Weekly volume (ISO week format)
@@ -239,6 +252,9 @@ function bucketInvoices(
     status_paid: statusPaid,
     status_unpaid: statusUnpaid,
     status_overdue: statusOverdue,
+    status_refunded: statusRefunded,
+    status_partial: statusPartial,
+    status_unknown: statusUnknown,
     weekly_volume: weeklyVolume,
   };
 }

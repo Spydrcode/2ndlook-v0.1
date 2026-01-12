@@ -7,6 +7,7 @@
 import type { UniversalConnector } from "../connector";
 import type { InvoiceCanonicalRow } from "../types";
 import { NotImplementedError } from "../connector";
+import { normalizeInvoiceStatus } from "@/lib/ingest/statuses";
 
 export class FileInvoiceConnector implements UniversalConnector {
   category = "invoices" as const;
@@ -51,19 +52,14 @@ export class FileInvoiceConnector implements UniversalConnector {
         row[key] = values[idx];
       });
 
-      // Validate invoice_status
-      const validStatuses = ["draft", "sent", "void", "paid", "unpaid", "overdue"];
-      const status = row.invoice_status?.toLowerCase();
-      if (!validStatuses.includes(status)) {
-        throw new Error(`Invalid invoice_status at row ${i + 1}: ${row.invoice_status}`);
-      }
+      const status = normalizeInvoiceStatus(row.invoice_status);
 
       // Normalize to canonical shape
       const canonicalRow: InvoiceCanonicalRow = {
         invoice_id: row.invoice_id || `INV-${Date.now()}-${i}`,
         invoice_date: row.invoice_date || new Date().toISOString(),
         invoice_total: Number.parseFloat(row.invoice_total || "0"),
-        invoice_status: status as InvoiceCanonicalRow["invoice_status"],
+        invoice_status: status,
         linked_estimate_id: row.linked_estimate_id || null,
       };
 

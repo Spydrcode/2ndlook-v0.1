@@ -26,7 +26,7 @@ This document explains what's **included** and **intentionally excluded** from 2
   - All price bands covered (<$500, $500-$1500, $1500-$5000, $5000+)
   - Last 90 days window
   - Realistic lead times (7-150 days)
-  - Mix of "closed" and "accepted" statuses
+  - Mix of sent/accepted/declined/converted statuses
 - **NPM script**: `npm run demo:generate`
 - **Smoke test integration**: `scripts/smoke-run-snapshot.ts` uses `.demo/` data when available
 

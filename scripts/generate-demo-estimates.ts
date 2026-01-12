@@ -60,15 +60,15 @@ const JOB_TYPES = [
   null, // Some estimates have no job type
 ];
 
-// Status (closed or accepted)
-const STATUSES: ("closed" | "accepted")[] = ["closed", "accepted"];
+// Status (sent, accepted, or converted - meaningful statuses)
+const STATUSES: ("sent" | "accepted" | "converted")[] = ["sent", "accepted", "converted"];
 
 interface EstimateRow {
   estimate_id: string;
   created_at: string;
   closed_at: string;
   amount: number;
-  status: "closed" | "accepted";
+  status: "sent" | "accepted" | "converted";
   job_type?: string;
 }
 

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
-import { MIN_CLOSED_ESTIMATES_PROD } from "@/lib/config/limits";
+import { MIN_MEANINGFUL_ESTIMATES_PROD, WINDOW_DAYS } from "@/lib/config/limits";
 
 interface BucketData {
   price_band_lt_500: number;
@@ -94,9 +94,9 @@ export default function ReviewPage() {
 
   const handleGenerateSnapshot = async () => {
     if (!sourceId) return;
-    if (estimateCount < MIN_CLOSED_ESTIMATES_PROD) {
+    if (estimateCount < MIN_MEANINGFUL_ESTIMATES_PROD) {
       setError(
-        `Minimum ${MIN_CLOSED_ESTIMATES_PROD} closed estimates required for a full snapshot.`
+        `Minimum ${MIN_MEANINGFUL_ESTIMATES_PROD} meaningful estimates required for a full snapshot.`
       );
       return;
     }
@@ -172,11 +172,11 @@ export default function ReviewPage() {
     );
   }
 
-  const effectiveRequiredMin = requiredMin || MIN_CLOSED_ESTIMATES_PROD;
+  const effectiveRequiredMin = requiredMin || MIN_MEANINGFUL_ESTIMATES_PROD;
   const isInsufficientData =
     isInsufficientDataNotice ||
     sourceStatus === "insufficient_data" ||
-    estimateCount < MIN_CLOSED_ESTIMATES_PROD;
+    estimateCount < MIN_MEANINGFUL_ESTIMATES_PROD;
 
   const totalPriceItems =
     bucketData.price_band_lt_500 +
@@ -202,7 +202,7 @@ export default function ReviewPage() {
       {isInsufficientData && (
         <Alert>
           <AlertDescription>
-            This is a small test dataset ({estimateCount} closed estimates). Full analysis requires {effectiveRequiredMin}+.
+            This is a small test dataset ({estimateCount} meaningful estimates). Full analysis requires {effectiveRequiredMin}+.
           </AlertDescription>
         </Alert>
       )}
@@ -215,11 +215,11 @@ export default function ReviewPage() {
         <CardContent className="space-y-3">
           <div className="flex items-baseline gap-2">
             <p className="text-3xl font-semibold">{estimateCount}</p>
-            <p className="text-muted-foreground">closed estimates</p>
+            <p className="text-muted-foreground">meaningful estimates</p>
           </div>
-          <p className="text-sm text-muted-foreground">Last 90 days</p>
+          <p className="text-sm text-muted-foreground">Last {WINDOW_DAYS} days</p>
           <p className="text-sm text-muted-foreground">
-            Closed estimates only. No customer or line-item details.
+            Sent/accepted/converted estimates only. No customer or line-item details.
           </p>
         </CardContent>
       </Card>
@@ -339,7 +339,7 @@ export default function ReviewPage() {
           <p className="text-sm text-muted-foreground">
             This will create a snapshot based on the groupings shown above. This does not change
             your systems or maintain a connection.
-          </p>creates a snapshot. It doesn't change your tools and it won't stay connected
+          </p>
           {error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />

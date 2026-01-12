@@ -12,7 +12,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "2ndlook",
-  description: "Connect & See — a decision snapshot from closed estimates.",
+  description: "Connect & See — a decision snapshot from recent estimates.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
