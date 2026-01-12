@@ -99,7 +99,7 @@ export async function runSnapshotOrchestrator(
       : undefined;
 
     const agentInput = {
-      windowDays: WINDOW_DAYS,
+      windowDays: WINDOW_DAYS as 90,
       connectorTools: aggregates.source_tool ? [aggregates.source_tool] : [],
       estimateSignals: {
         countsByStatus: {},

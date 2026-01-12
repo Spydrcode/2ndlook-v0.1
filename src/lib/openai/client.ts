@@ -73,7 +73,7 @@ export async function createSnapshotResponse<T>(
       if (!outputText) {
         throw new OpenAISnapshotError("OpenAI response was empty", {
           code: "empty_response",
-          requestId: response._request_id,
+          requestId: response._request_id ?? undefined,
         });
       }
 
@@ -91,7 +91,7 @@ export async function createSnapshotResponse<T>(
         throw new OpenAISnapshotError(error.message, {
           status: error.status,
           code: retryable ? "retry_exhausted" : "non_retryable",
-          requestId: error.request_id,
+          requestId: error.requestID ?? undefined,
         });
       }
 

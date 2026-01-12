@@ -63,6 +63,7 @@ export async function refreshJobberToken(
     const expiresAt = new Date(Date.now() + expires_in * 1000).toISOString();
 
     // Update stored tokens (refresh_token may have rotated)
+    const supabase = createAdminClient();
     const { error: updateError } = await supabase
       .from("oauth_connections")
       .update({
