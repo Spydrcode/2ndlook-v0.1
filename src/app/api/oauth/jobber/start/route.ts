@@ -1,7 +1,9 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
-import { randomBytes } from "crypto";
+import { getConnection } from "@/lib/oauth/connections";
+import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
+import { randomBytes, randomUUID } from "crypto";
 export const runtime = "nodejs";
 
 /**
@@ -12,9 +14,12 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   const appUrl =
     process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+  const force = request.nextUrl.searchParams.get("force") === "1";
   try {
     // Get or create installation_id (no login required)
     const installationId = await getOrCreateInstallationId();
+    const existingEventId = request.cookies.get("jobber_event_id")?.value;
+    const eventId = existingEventId || randomUUID();
 
     // Validate required environment variables
     const clientId = process.env.JOBBER_CLIENT_ID;
@@ -28,6 +33,44 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (!force) {
+      try {
+        const connection = await getConnection(installationId, "jobber");
+        const expiresAt = connection?.token_expires_at
+          ? new Date(connection.token_expires_at)
+          : null;
+        const isExpired = expiresAt ? expiresAt.getTime() <= Date.now() : false;
+        const isConnected = !!connection?.access_token && !isExpired;
+
+        if (isConnected) {
+          const manageUrl = process.env.JOBBER_MANAGE_APP_URL;
+          const redirectTo = manageUrl
+            ? new URL(manageUrl, appUrl).toString()
+            : new URL("/dashboard/connect?connected=jobber", appUrl).toString();
+
+          try {
+            await logJobberConnectionEvent({
+              installationId,
+              eventId,
+              phase: "oauth_start",
+              details: {
+                force: false,
+                skipped_oauth: true,
+                reason: "already_connected",
+                redirect_to: redirectTo,
+              },
+            });
+          } catch (logError) {
+            console.error("Failed to log Jobber OAuth start event:", logError);
+          }
+
+          return NextResponse.redirect(redirectTo);
+        }
+      } catch (error) {
+        console.error("Failed to validate Jobber connection:", error);
+      }
+    }
+
     // Generate cryptographically random state
     const state = randomBytes(32).toString("hex");
 
@@ -38,6 +81,21 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("scope", scopes);
     authUrl.searchParams.set("state", state);
+
+    try {
+      await logJobberConnectionEvent({
+        installationId,
+        eventId,
+        phase: "oauth_start",
+        details: {
+          force,
+          scopes,
+          redirect_uri: redirectUri,
+        },
+      });
+    } catch (logError) {
+      console.error("Failed to log Jobber OAuth start event:", logError);
+    }
 
     // Create response with redirect
     const response = NextResponse.redirect(authUrl.toString());
@@ -53,6 +111,14 @@ export async function GET(request: NextRequest) {
 
     // Store installation_id in cookie for callback (OAuth redirect needs this)
     response.cookies.set("jobber_oauth_installation", installationId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600,
+      path: "/",
+    });
+
+    response.cookies.set("jobber_event_id", eventId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",

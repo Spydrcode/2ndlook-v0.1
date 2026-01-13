@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchEstimates } from "./graphql";
 import { normalizeAndStore } from "@/lib/ingest/normalize-estimates";
 import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
+import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
 
 export interface IngestJobberResult {
   success: boolean;
@@ -31,7 +32,8 @@ export interface IngestJobberResult {
  * Returns source_id on success or error message on failure.
  */
 export async function ingestJobberEstimates(
-  installationId: string
+  installationId: string,
+  eventId?: string
 ): Promise<IngestJobberResult> {
   try {
     const supabase = createAdminClient();
@@ -97,6 +99,24 @@ export async function ingestJobberEstimates(
         .eq("id", sourceId);
 
       console.log("[JOBBER INGEST] SUCCESS! Ingestion complete.");
+      if (eventId) {
+        try {
+          await logJobberConnectionEvent({
+            installationId,
+            eventId,
+            phase: "ingest_success",
+            details: {
+              source_id: sourceId,
+              meaningful_estimates: meaningful,
+              required_min: MIN_MEANINGFUL_ESTIMATES_PROD,
+              kept,
+              rejected,
+            },
+          });
+        } catch (logError) {
+          console.error("Failed to log Jobber ingest success:", logError);
+        }
+      }
       return {
         success: true,
         source_id: sourceId,
@@ -114,6 +134,23 @@ export async function ingestJobberEstimates(
         .delete()
         .eq("id", sourceId);
 
+      if (eventId) {
+        try {
+          await logJobberConnectionEvent({
+            installationId,
+            eventId,
+            phase: "ingest_error",
+            details: {
+              source_id: sourceId,
+              error:
+                fetchError instanceof Error ? fetchError.message : "Ingestion failed",
+            },
+          });
+        } catch (logError) {
+          console.error("Failed to log Jobber ingest error:", logError);
+        }
+      }
+
       return {
         success: false,
         error: fetchError instanceof Error ? fetchError.message : "Ingestion failed",
@@ -121,6 +158,20 @@ export async function ingestJobberEstimates(
     }
   } catch (err) {
     console.error("Unexpected ingestion error:", err);
+    if (eventId) {
+      try {
+        await logJobberConnectionEvent({
+          installationId,
+          eventId,
+          phase: "ingest_error",
+          details: {
+            error: err instanceof Error ? err.message : "Unexpected ingestion error",
+          },
+        });
+      } catch (logError) {
+        console.error("Failed to log Jobber ingest error:", logError);
+      }
+    }
     return {
       success: false,
       error: "Unexpected error during ingestion",

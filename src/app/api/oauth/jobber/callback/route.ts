@@ -4,6 +4,8 @@ import { cookies } from "next/headers";
 import { upsertConnection } from "@/lib/oauth/connections";
 import { ingestJobberEstimates } from "@/lib/jobber/ingest";
 import { allowSmallDatasets, MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
+import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
+import { randomUUID } from "crypto";
 export const runtime = "nodejs";
 
 /**
@@ -23,9 +25,37 @@ export async function GET(request: NextRequest) {
     const error = searchParams.get("error");
     const errorDescription = searchParams.get("error_description");
 
+    const cookieStore = await cookies();
+    const storedState = cookieStore.get("jobber_oauth_state")?.value;
+    const installationId = cookieStore.get("jobber_oauth_installation")?.value;
+    const eventId = cookieStore.get("jobber_event_id")?.value ?? randomUUID();
+
+    const logEvent = async (
+      phase: Parameters<typeof logJobberConnectionEvent>[0]["phase"],
+      details?: Record<string, unknown>
+    ) => {
+      if (!installationId) return;
+      try {
+        await logJobberConnectionEvent({
+          installationId,
+          eventId,
+          phase,
+          details,
+        });
+      } catch (logError) {
+        console.error("Failed to log Jobber OAuth event:", logError);
+      }
+    };
+
     // Handle OAuth error from Jobber
     if (error) {
       console.error("Jobber OAuth error:", error, errorDescription);
+      await logEvent("oauth_callback", {
+        error,
+        error_description: errorDescription,
+        has_code: !!code,
+        has_state: !!state,
+      });
       return NextResponse.redirect(
         `${appUrl}/dashboard/connect?error=jobber_oauth_failed`
       );
@@ -33,24 +63,35 @@ export async function GET(request: NextRequest) {
 
     // Validate required parameters
     if (!code) {
+      await logEvent("oauth_callback", {
+        error: "missing_code",
+        has_state: !!state,
+      });
       return NextResponse.redirect(
         `${appUrl}/dashboard/connect?error=jobber_missing_code`
       );
     }
 
     if (!state) {
+      await logEvent("oauth_callback", {
+        error: "missing_state",
+        has_code: true,
+      });
       return NextResponse.redirect(
         `${appUrl}/dashboard/connect?error=jobber_state_mismatch`
       );
     }
 
     // Validate state from cookie
-    const cookieStore = await cookies();
-    const storedState = cookieStore.get("jobber_oauth_state")?.value;
-    const installationId = cookieStore.get("jobber_oauth_installation")?.value;
-    
     if (!storedState || !installationId || storedState !== state) {
       console.error("[JOBBER CALLBACK] OAuth state mismatch or missing");
+      await logEvent("oauth_callback", {
+        error: "state_mismatch",
+        has_code: true,
+        has_state: true,
+        stored_state_present: !!storedState,
+        state_match: storedState === state,
+      });
       return NextResponse.redirect(
         `${appUrl}/dashboard/connect?error=jobber_state_mismatch`
       );
@@ -59,10 +100,20 @@ export async function GET(request: NextRequest) {
     // Clear state cookies
     cookieStore.delete("jobber_oauth_state");
     cookieStore.delete("jobber_oauth_installation");
+    cookieStore.delete("jobber_event_id");
+
+    await logEvent("oauth_callback", {
+      ok: true,
+      has_code: true,
+      has_state: true,
+    });
 
     // Validate environment variables
     if (!process.env.JOBBER_CLIENT_ID || !process.env.JOBBER_CLIENT_SECRET || !process.env.JOBBER_REDIRECT_URI) {
       console.error("Missing Jobber OAuth environment variables");
+      await logEvent("oauth_callback", {
+        error: "config_missing",
+      });
       return NextResponse.redirect(
         `${appUrl}/dashboard/connect?error=jobber_config_error`
       );
@@ -86,6 +137,11 @@ export async function GET(request: NextRequest) {
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.text();
       console.error("Token exchange failed:", tokenResponse.status, errorData);
+      await logEvent("token_exchange", {
+        ok: false,
+        status: tokenResponse.status,
+        error: errorData,
+      });
       return NextResponse.redirect(
         `${appUrl}/dashboard/connect?error=jobber_token_exchange_failed`
       );
@@ -96,10 +152,20 @@ export async function GET(request: NextRequest) {
 
     if (!access_token || !refresh_token) {
       console.error("Missing tokens in response:", tokens);
+      await logEvent("token_exchange", {
+        ok: false,
+        status: tokenResponse.status,
+        error: "missing_tokens",
+      });
       return NextResponse.redirect(
         `${appUrl}/dashboard/connect?error=jobber_invalid_tokens`
       );
     }
+
+    await logEvent("token_exchange", {
+      ok: true,
+      status: tokenResponse.status,
+    });
 
     // Calculate token expiration (default to 1 hour if expires_in not provided)
     const expiresInSeconds = typeof expires_in === "number" ? expires_in : 3600;
@@ -118,6 +184,10 @@ export async function GET(request: NextRequest) {
       });
     } catch (dbError) {
       console.error("Failed to store OAuth tokens:", dbError);
+      await logEvent("token_exchange", {
+        ok: false,
+        error: "db_error",
+      });
       return NextResponse.redirect(
         `${appUrl}/dashboard/connect?error=jobber_db_error`
       );
@@ -125,7 +195,8 @@ export async function GET(request: NextRequest) {
 
     // Trigger ingestion
     console.log("[JOBBER CALLBACK] Starting Jobber ingestion for installation:", installationId);
-    const ingestionResult = await ingestJobberEstimates(installationId);
+    await logEvent("ingest_start", { installation_id: installationId });
+    const ingestionResult = await ingestJobberEstimates(installationId, eventId);
     console.log("[JOBBER CALLBACK] Ingestion result:", JSON.stringify(ingestionResult, null, 2));
 
     if (!ingestionResult.success) {

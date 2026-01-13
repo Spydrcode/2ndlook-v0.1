@@ -173,6 +173,11 @@ export async function listConnectionStatuses(
       }
     }
 
+    const expiresAt = row.token_expires_at ? new Date(row.token_expires_at) : null;
+    if (expiresAt && expiresAt.getTime() <= Date.now()) {
+      status = "reconnect_required";
+    }
+
     return {
       provider: row.provider,
       status,

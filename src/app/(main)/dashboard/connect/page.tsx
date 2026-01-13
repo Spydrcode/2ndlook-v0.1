@@ -41,6 +41,11 @@ export default function ConnectPage() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [connectionStates, setConnectionStates] = useState<Record<string, ConnectionStatus>>({});
+  const [jobberEvents, setJobberEvents] = useState<{
+    last_sync_status: "success" | "fail" | null;
+    last_error_message: string | null;
+    last_event_id: string | null;
+  } | null>(null);
 
   useEffect(() => {
     const errorParam = searchParams.get("error");
@@ -71,6 +76,32 @@ export default function ConnectPage() {
     };
 
     loadStatuses();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadJobberEvents = async () => {
+      try {
+        const response = await fetch("/api/oauth/jobber/events");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!isMounted) return;
+        setJobberEvents({
+          last_sync_status: data?.last_sync_status ?? null,
+          last_error_message: data?.last_error_message ?? null,
+          last_event_id: data?.last_event_id ?? null,
+        });
+      } catch {
+        // Silent failure - fallback to default UI
+      }
+    };
+
+    loadJobberEvents();
 
     return () => {
       isMounted = false;
@@ -120,12 +151,16 @@ export default function ConnectPage() {
 
     if (!isImplemented) return;
 
-    if (tool === "jobber") {
-      window.location.href = "/api/oauth/jobber/start";
-      return;
-    }
-
     window.location.href = `/api/oauth/${tool}/start`;
+  };
+
+  const handleCopyEventId = async () => {
+    if (!jobberEvents?.last_event_id) return;
+    try {
+      await navigator.clipboard.writeText(jobberEvents.last_event_id);
+    } catch {
+      // Ignore clipboard errors
+    }
   };
 
   return (
@@ -165,6 +200,9 @@ export default function ConnectPage() {
           const status = connectionStates[connector.tool];
           const needsReconnect = status === "reconnect_required";
           const isConnected = status === "connected";
+          const jobberActionHref = needsReconnect
+            ? "/api/oauth/jobber/reconnect"
+            : "/api/oauth/jobber/start";
 
           return (
             <Card key={connector.tool} className="transition-colors hover:border-primary/70">
@@ -195,18 +233,63 @@ export default function ConnectPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Button
-                  variant={isAvailable ? "default" : "outline"}
-                  className="w-full"
-                  disabled={!isAvailable && !needsReconnect}
-                  onClick={() => handleConnect(connector.tool, isAvailable || needsReconnect)}
-                >
-                  {needsReconnect
-                    ? `Reconnect ${connector.getDisplayName()}`
-                    : isAvailable
-                      ? `Connect ${connector.getDisplayName()}`
-                      : "Coming soon"}
-                </Button>
+                {connector.tool === "jobber" && (
+                  <div className="mb-3 space-y-1 text-xs text-muted-foreground">
+                    <div>
+                      Last sync:{" "}
+                      {jobberEvents?.last_sync_status
+                        ? jobberEvents.last_sync_status === "success"
+                          ? "Success"
+                          : "Fail"
+                        : "Never"}
+                    </div>
+                    <div>
+                      Last error: {jobberEvents?.last_error_message || "None"}
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Event ID: {jobberEvents?.last_event_id || "N/A"}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCopyEventId}
+                        disabled={!jobberEvents?.last_event_id}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {connector.tool === "jobber" ? (
+                  <Button
+                    asChild
+                    variant={isAvailable ? "default" : "outline"}
+                    className="w-full"
+                    disabled={!isAvailable && !needsReconnect}
+                  >
+                    <a href={jobberActionHref}>
+                      {needsReconnect
+                        ? `Reconnect ${connector.getDisplayName()}`
+                        : isConnected
+                          ? `Manage ${connector.getDisplayName()}`
+                          : `Connect ${connector.getDisplayName()}`}
+                    </a>
+                  </Button>
+                ) : (
+                  <Button
+                    variant={isAvailable ? "default" : "outline"}
+                    className="w-full"
+                    disabled={!isAvailable && !needsReconnect}
+                    onClick={() => handleConnect(connector.tool, isAvailable || needsReconnect)}
+                  >
+                    {needsReconnect
+                      ? `Reconnect ${connector.getDisplayName()}`
+                      : isAvailable
+                        ? `Connect ${connector.getDisplayName()}`
+                        : "Coming soon"}
+                  </Button>
+                )}
               </CardContent>
             </Card>
           );
