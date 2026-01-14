@@ -1,5 +1,8 @@
 import { getJobberAccessToken } from "./oauth";
 import type { CSVEstimateRow } from "@/types/2ndlook";
+import type { InvoiceRowInput } from "@/lib/ingest/normalize-invoices";
+import type { JobRowInput } from "@/lib/ingest/normalize-jobs";
+import type { ClientRowInput } from "@/lib/ingest/normalize-clients";
 import { WINDOW_DAYS } from "@/lib/config/limits";
 import { normalizeEstimateStatus } from "@/lib/ingest/statuses";
 
@@ -9,6 +12,89 @@ export interface JobberQuote {
   closedAt: string | null;
   total: { amount: string; currency: string };
   status: string;
+}
+
+interface JobberInvoice {
+  id: string;
+  createdAt: string;
+  issuedDate?: string | null;
+  dueDate?: string | null;
+  invoiceStatus: string;
+  amounts?: { total?: { amount?: string | number | null } | null } | null;
+  jobs?: { nodes?: Array<{ id: string }> } | null;
+  client?: { id?: string };
+}
+
+interface JobberJob {
+  id: string;
+  createdAt: string;
+  startAt?: string | null;
+  endAt?: string | null;
+  jobStatus?: string | null;
+  total?: number | string | null;
+  client?: { id?: string | null } | null;
+}
+
+interface JobberClient {
+  id: string;
+  createdAt: string;
+  updatedAt?: string | null;
+  isLead?: boolean | null;
+}
+
+async function jobberGraphQLRequest<T>({
+  installationId,
+  query,
+  variables,
+}: {
+  installationId: string;
+  query: string;
+  variables?: Record<string, unknown>;
+}): Promise<T> {
+  console.log("[JOBBER GRAPHQL] Getting access token for installation:", installationId);
+  const accessToken = await getJobberAccessToken(installationId);
+  if (!accessToken) {
+    console.error("[JOBBER GRAPHQL] Failed to get access token");
+    throw new Error("Failed to get Jobber access token");
+  }
+
+  const response = await fetch("https://api.getjobber.com/api/graphql", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      "X-JOBBER-GRAPHQL-VERSION": "2023-03-09",
+    },
+    body: JSON.stringify({
+      query,
+      variables: variables ?? {},
+    }),
+  });
+
+  const text = await response.text();
+  let json: { data?: T; errors?: unknown };
+  try {
+    json = JSON.parse(text);
+  } catch (err) {
+    console.error("[JOBBER GRAPHQL] Failed to parse JSON response:", err, text);
+    throw new Error("Jobber API returned non-JSON response");
+  }
+
+  if (!response.ok) {
+    console.error("[JOBBER GRAPHQL] API error:", response.status, text);
+    throw new Error(`Jobber API error: ${response.status}`);
+  }
+
+  if (json.errors) {
+    console.error("[JOBBER GRAPHQL] GraphQL errors:", JSON.stringify(json.errors, null, 2));
+    throw new Error("GraphQL query failed");
+  }
+
+  if (!json.data) {
+    throw new Error("Jobber API returned empty data");
+  }
+
+  return json.data;
 }
 
 /**
@@ -22,14 +108,6 @@ export async function fetchEstimates(
   installationId: string
 ): Promise<CSVEstimateRow[]> {
   try {
-    console.log("[JOBBER GRAPHQL] Getting access token for installation:", installationId);
-    const accessToken = await getJobberAccessToken(installationId);
-    if (!accessToken) {
-      console.error("[JOBBER GRAPHQL] Failed to get access token");
-      throw new Error("Failed to get Jobber access token");
-    }
-    console.log("[JOBBER GRAPHQL] Got access token, fetching quotes...");
-
     // Calculate window start
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - WINDOW_DAYS);
@@ -58,50 +136,21 @@ export async function fetchEstimates(
       }
     `;
 
-    console.log("[JOBBER GRAPHQL] Fetching from Jobber API...");
-    const response = await fetch("https://api.getjobber.com/api/graphql", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "X-JOBBER-GRAPHQL-VERSION": "2023-03-09",
-      },
-      body: JSON.stringify({
-        query,
-        variables: { dateFilter },
-      }),
+    console.log("[JOBBER GRAPHQL] Fetching quotes from Jobber API...");
+    const result = await jobberGraphQLRequest<{ quotes?: any }>({
+      installationId,
+      query,
+      variables: { dateFilter },
     });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error("[JOBBER GRAPHQL] API error:", response.status, errorData);
-      throw new Error(`Jobber API error: ${response.status} - ${errorData}`);
-    }
-    console.log("[JOBBER GRAPHQL] Response OK, parsing data...");
-
-    const result = await response.json();
-    
-    // === RAW RESPONSE DEBUG LOGGING ===
-    console.log("[JOBBER RAW RESPONSE] Status:", response.status);
-    console.log("[JOBBER RAW RESPONSE] Full JSON:", JSON.stringify(result, null, 2));
-    console.log("[JOBBER RAW RESPONSE] Has errors?", !!result.errors);
-    console.log("[JOBBER RAW RESPONSE] data.quotes exists?", !!result.data?.quotes);
-    console.log("[JOBBER RAW RESPONSE] data.quotes structure:", Object.keys(result.data?.quotes || {}));
-    // === END DEBUG LOGGING ===
-
-    if (result.errors) {
-      console.error("[JOBBER GRAPHQL] GraphQL errors:", JSON.stringify(result.errors, null, 2));
-      throw new Error("GraphQL query failed: " + JSON.stringify(result.errors));
-    }
 
     // Try both edges.node and nodes structures
     let quotes: JobberQuote[] = [];
-    if (result.data?.quotes?.edges) {
+    if (result.quotes?.edges) {
       console.log("[JOBBER RAW RESPONSE] Using edges.node structure");
-      quotes = result.data.quotes.edges.map((edge: any) => edge.node);
-    } else if (result.data?.quotes?.nodes) {
+      quotes = result.quotes.edges.map((edge: any) => edge.node);
+    } else if (result.quotes?.nodes) {
       console.log("[JOBBER RAW RESPONSE] Using nodes structure");
-      quotes = result.data.quotes.nodes;
+      quotes = result.quotes.nodes;
     } else {
       console.log("[JOBBER RAW RESPONSE] No quotes found in response");
     }
@@ -140,4 +189,157 @@ export async function fetchEstimates(
  */
 function normalizeJobberStatus(status: string): string {
   return normalizeEstimateStatus(status);
+}
+
+/**
+ * Fetch invoices from Jobber GraphQL API.
+ * Returns rows ready for invoice normalization.
+ */
+export async function fetchInvoices(
+  installationId: string
+): Promise<InvoiceRowInput[]> {
+  const query = `
+    query GetInvoices {
+      invoices(first: 100) {
+        nodes {
+          id
+          createdAt
+          issuedDate
+          dueDate
+          invoiceStatus
+          amounts {
+            total {
+              amount
+            }
+          }
+          jobs {
+            nodes { id }
+          }
+          client {
+            id
+          }
+        }
+      }
+    }
+  `;
+
+  console.log("[JOBBER GRAPHQL] Fetching invoices from Jobber API...");
+  const result = await jobberGraphQLRequest<{ invoices?: { nodes?: JobberInvoice[] } }>({
+    installationId,
+    query,
+  });
+
+  const invoices = result.invoices?.nodes ?? [];
+
+  console.log(`[JOBBER GRAPHQL] Invoices returned: ${invoices.length}`);
+  if (invoices.length > 0) {
+    console.log("[JOBBER GRAPHQL] First invoice sample:", JSON.stringify(invoices[0], null, 2));
+  }
+
+  const rows: InvoiceRowInput[] = invoices.map((invoice) => ({
+    invoice_id: invoice.id,
+    invoice_date:
+      invoice.issuedDate ||
+      invoice.createdAt ||
+      invoice.dueDate ||
+      new Date().toISOString(),
+    invoice_total:
+      invoice.amounts?.total?.amount !== undefined && invoice.amounts?.total?.amount !== null
+        ? invoice.amounts.total.amount
+        : 0,
+    invoice_status: invoice.invoiceStatus,
+    linked_estimate_id: invoice.jobs?.nodes?.[0]?.id ?? null,
+  }));
+
+  return rows;
+}
+
+/**
+ * Fetch jobs from Jobber GraphQL API.
+ */
+export async function fetchJobs(
+  installationId: string
+): Promise<JobRowInput[]> {
+  const query = `
+    query GetJobs {
+      jobs(first: 100) {
+        nodes {
+          id
+          createdAt
+          startAt
+          endAt
+          jobStatus
+          total
+          client { id }
+        }
+      }
+    }
+  `;
+
+  console.log("[JOBBER GRAPHQL] Fetching jobs from Jobber API...");
+  const result = await jobberGraphQLRequest<{ jobs?: { nodes?: JobberJob[] } }>({
+    installationId,
+    query,
+  });
+
+  const jobs = result.jobs?.nodes ?? [];
+  console.log(`[JOBBER GRAPHQL] Jobs returned: ${jobs.length}`);
+
+  if (jobs.length > 0) {
+    console.log("[JOBBER GRAPHQL] First job sample:", JSON.stringify(jobs[0], null, 2));
+  }
+
+  const rows: JobRowInput[] = jobs.map((job) => ({
+    job_id: job.id,
+    created_at: job.createdAt,
+    start_at: job.startAt ?? null,
+    end_at: job.endAt ?? null,
+    job_status: job.jobStatus ?? undefined,
+    job_total: job.total ?? null,
+    client_id: job.client?.id ?? null,
+  }));
+
+  return rows;
+}
+
+/**
+ * Fetch clients from Jobber GraphQL API.
+ */
+export async function fetchClients(
+  installationId: string
+): Promise<ClientRowInput[]> {
+  const query = `
+    query GetClients {
+      clients(first: 100) {
+        nodes {
+          id
+          createdAt
+          updatedAt
+          isLead
+        }
+      }
+    }
+  `;
+
+  console.log("[JOBBER GRAPHQL] Fetching clients from Jobber API...");
+  const result = await jobberGraphQLRequest<{ clients?: { nodes?: JobberClient[] } }>({
+    installationId,
+    query,
+  });
+
+  const clients = result.clients?.nodes ?? [];
+  console.log(`[JOBBER GRAPHQL] Clients returned: ${clients.length}`);
+
+  if (clients.length > 0) {
+    console.log("[JOBBER GRAPHQL] First client sample:", JSON.stringify(clients[0], null, 2));
+  }
+
+  const rows: ClientRowInput[] = clients.map((client) => ({
+    client_id: client.id,
+    created_at: client.createdAt,
+    updated_at: client.updatedAt ?? null,
+    is_lead: client.isLead ?? null,
+  }));
+
+  return rows;
 }

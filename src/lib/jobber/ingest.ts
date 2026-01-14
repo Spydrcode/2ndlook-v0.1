@@ -4,8 +4,11 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchEstimates } from "./graphql";
+import { fetchClients, fetchEstimates, fetchInvoices, fetchJobs } from "./graphql";
 import { normalizeAndStore } from "@/lib/ingest/normalize-estimates";
+import { normalizeInvoicesAndStore } from "@/lib/ingest/normalize-invoices";
+import { normalizeJobsAndStore } from "@/lib/ingest/normalize-jobs";
+import { normalizeClientsAndStore } from "@/lib/ingest/normalize-clients";
 import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
 import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
 
@@ -18,6 +21,9 @@ export interface IngestJobberResult {
   status?: "ingested";
   kept?: number;
   rejected?: number;
+  invoices_kept?: number;
+  jobs_kept?: number;
+  clients_kept?: number;
 }
 
 /**
@@ -86,6 +92,45 @@ export async function ingestJobberEstimates(
 
       console.log(`[JOBBER INGEST] Normalization complete: ${kept} kept, ${rejected} rejected`);
 
+      // Fetch and normalize invoices
+      console.log("[JOBBER INGEST] Fetching invoices from Jobber...");
+      const invoiceRows = await fetchInvoices(installationId);
+      console.log(`[JOBBER INGEST] Fetched ${invoiceRows.length} invoices from Jobber`);
+      const { kept: keptInvoices, rejected: rejectedInvoices } = await normalizeInvoicesAndStore(
+        supabase,
+        sourceId,
+        invoiceRows
+      );
+      console.log(
+        `[JOBBER INGEST] Invoice normalization complete: ${keptInvoices} kept, ${rejectedInvoices} rejected`
+      );
+
+      // Fetch and normalize jobs
+      console.log("[JOBBER INGEST] Fetching jobs from Jobber...");
+      const jobRows = await fetchJobs(installationId);
+      console.log(`[JOBBER INGEST] Fetched ${jobRows.length} jobs from Jobber`);
+      const { kept: keptJobs, rejected: rejectedJobs } = await normalizeJobsAndStore(
+        supabase,
+        sourceId,
+        jobRows
+      );
+      console.log(
+        `[JOBBER INGEST] Job normalization complete: ${keptJobs} kept, ${rejectedJobs} rejected`
+      );
+
+      // Fetch and normalize clients
+      console.log("[JOBBER INGEST] Fetching clients from Jobber...");
+      const clientRows = await fetchClients(installationId);
+      console.log(`[JOBBER INGEST] Fetched ${clientRows.length} clients from Jobber`);
+      const { kept: keptClients, rejected: rejectedClients } = await normalizeClientsAndStore(
+        supabase,
+        sourceId,
+        clientRows
+      );
+      console.log(
+        `[JOBBER INGEST] Client normalization complete: ${keptClients} kept, ${rejectedClients} rejected`
+      );
+
       console.log("[JOBBER INGEST] Updating source status to ingested...");
       await supabase
         .from("sources")
@@ -94,6 +139,12 @@ export async function ingestJobberEstimates(
           metadata: {
             meaningful_estimates: meaningful,
             required_min: MIN_MEANINGFUL_ESTIMATES_PROD,
+            totals: {
+              estimates: kept,
+              invoices: keptInvoices,
+              jobs: keptJobs,
+              clients: keptClients,
+            },
           },
         })
         .eq("id", sourceId);
@@ -111,6 +162,9 @@ export async function ingestJobberEstimates(
               required_min: MIN_MEANINGFUL_ESTIMATES_PROD,
               kept,
               rejected,
+              invoices: keptInvoices,
+              jobs: keptJobs,
+              clients: keptClients,
             },
           });
         } catch (logError) {
@@ -125,6 +179,9 @@ export async function ingestJobberEstimates(
         required_min: MIN_MEANINGFUL_ESTIMATES_PROD,
         kept,
         rejected,
+        invoices_kept: keptInvoices,
+        jobs_kept: keptJobs,
+        clients_kept: keptClients,
       };
     } catch (fetchError) {
       // Rollback: delete source on fetch/normalize failure

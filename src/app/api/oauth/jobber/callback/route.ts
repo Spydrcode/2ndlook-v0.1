@@ -18,6 +18,16 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   const appUrl =
     process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+  
+  // Helper to create error response with cookie cleanup
+  const errorResponse = (errorCode: string) => {
+    const response = NextResponse.redirect(`${appUrl}/dashboard/connect?error=${errorCode}`);
+    response.cookies.delete("jobber_oauth_state");
+    response.cookies.delete("jobber_oauth_installation");
+    response.cookies.delete("jobber_event_id");
+    return response;
+  };
+  
   try {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get("code");
@@ -56,9 +66,7 @@ export async function GET(request: NextRequest) {
         has_code: !!code,
         has_state: !!state,
       });
-      return NextResponse.redirect(
-        `${appUrl}/dashboard/connect?error=jobber_oauth_failed`
-      );
+      return errorResponse("jobber_oauth_failed");
     }
 
     // Validate required parameters
@@ -67,9 +75,7 @@ export async function GET(request: NextRequest) {
         error: "missing_code",
         has_state: !!state,
       });
-      return NextResponse.redirect(
-        `${appUrl}/dashboard/connect?error=jobber_missing_code`
-      );
+      return errorResponse("jobber_missing_code");
     }
 
     if (!state) {
@@ -77,9 +83,7 @@ export async function GET(request: NextRequest) {
         error: "missing_state",
         has_code: true,
       });
-      return NextResponse.redirect(
-        `${appUrl}/dashboard/connect?error=jobber_state_mismatch`
-      );
+      return errorResponse("jobber_state_mismatch");
     }
 
     // Validate state from cookie
@@ -92,9 +96,7 @@ export async function GET(request: NextRequest) {
         stored_state_present: !!storedState,
         state_match: storedState === state,
       });
-      return NextResponse.redirect(
-        `${appUrl}/dashboard/connect?error=jobber_state_mismatch`
-      );
+      return errorResponse("jobber_state_mismatch");
     }
 
     // Clear state cookies
@@ -114,9 +116,7 @@ export async function GET(request: NextRequest) {
       await logEvent("oauth_callback", {
         error: "config_missing",
       });
-      return NextResponse.redirect(
-        `${appUrl}/dashboard/connect?error=jobber_config_error`
-      );
+      return errorResponse("jobber_config_error");
     }
 
     // Exchange authorization code for tokens
@@ -142,9 +142,7 @@ export async function GET(request: NextRequest) {
         status: tokenResponse.status,
         error: errorData,
       });
-      return NextResponse.redirect(
-        `${appUrl}/dashboard/connect?error=jobber_token_exchange_failed`
-      );
+      return errorResponse("jobber_token_exchange_failed");
     }
 
     const tokens = await tokenResponse.json();
@@ -157,9 +155,7 @@ export async function GET(request: NextRequest) {
         status: tokenResponse.status,
         error: "missing_tokens",
       });
-      return NextResponse.redirect(
-        `${appUrl}/dashboard/connect?error=jobber_invalid_tokens`
-      );
+      return errorResponse("jobber_invalid_tokens");
     }
 
     await logEvent("token_exchange", {
@@ -188,9 +184,7 @@ export async function GET(request: NextRequest) {
         ok: false,
         error: "db_error",
       });
-      return NextResponse.redirect(
-        `${appUrl}/dashboard/connect?error=jobber_db_error`
-      );
+      return errorResponse("jobber_db_error");
     }
 
     // Trigger ingestion
@@ -202,9 +196,7 @@ export async function GET(request: NextRequest) {
     if (!ingestionResult.success) {
       console.error("[JOBBER CALLBACK] Ingestion failed:", ingestionResult.error);
 
-      return NextResponse.redirect(
-        `${appUrl}/dashboard/connect?error=jobber_ingest_failed`
-      );
+      return errorResponse("jobber_ingest_failed");
     }
 
     const sourceId = ingestionResult.source_id;
@@ -213,18 +205,26 @@ export async function GET(request: NextRequest) {
       allowSmallDatasets() &&
       (ingestionResult.meaningful_estimates || 0) < MIN_MEANINGFUL_ESTIMATES_PROD
     ) {
-      return NextResponse.redirect(
+      // Clear OAuth cookies on completion
+      const response = NextResponse.redirect(
         `${appUrl}/dashboard/review?source_id=${sourceId}&notice=insufficient_data`
       );
+      response.cookies.delete("jobber_oauth_state");
+      response.cookies.delete("jobber_oauth_installation");
+      response.cookies.delete("jobber_event_id");
+      return response;
     }
 
-    return NextResponse.redirect(
+    // Clear OAuth cookies on successful completion
+    const response = NextResponse.redirect(
       `${appUrl}/dashboard/review?source_id=${sourceId}&success=true`
     );
+    response.cookies.delete("jobber_oauth_state");
+    response.cookies.delete("jobber_oauth_installation");
+    response.cookies.delete("jobber_event_id");
+    return response;
   } catch (err) {
     console.error("OAuth callback error:", err);
-    return NextResponse.redirect(
-      `${appUrl}/dashboard/connect?error=jobber_unexpected_error`
-    );
+    return errorResponse("jobber_unexpected_error");
   }
 }

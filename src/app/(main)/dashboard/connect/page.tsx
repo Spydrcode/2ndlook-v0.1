@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { X, Sparkles } from "lucide-react";
 
@@ -14,25 +15,31 @@ import { WINDOW_DAYS } from "@/lib/config/limits";
 const connectorDescriptions: Record<string, string> = {
   stripe: "Invoices and payments from Stripe",
   square: "Invoices and payments from Square",
-  paypal: "Invoices and payments from PayPal",
   wave: "Invoices and payments from Wave",
   "zoho-invoice": "Invoices from Zoho Invoice",
-  paymo: "Billing from Paymo",
   quickbooks: "Invoices and payments from QuickBooks",
   jobber: "Estimates from Jobber",
   "housecall-pro": "Estimates from Housecall Pro",
 };
 
 const connectorPriority = [
+  "jobber",
+  "housecall-pro",
   "stripe",
   "square",
-  "paypal",
   "quickbooks",
   "wave",
   "zoho-invoice",
-  "paymo",
+];
+
+const oauthTools = [
   "jobber",
   "housecall-pro",
+  "quickbooks",
+  "square",
+  "stripe",
+  "wave",
+  "zoho-invoice",
 ];
 
 type ConnectionStatus = "connected" | "reconnect_required";
@@ -46,13 +53,49 @@ export default function ConnectPage() {
     last_error_message: string | null;
     last_event_id: string | null;
   } | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
     const errorParam = searchParams.get("error");
+    const successParam = searchParams.get("success");
+    
     if (errorParam) {
       setError(errorParam);
+      setIsConnecting(false); // Connection failed
+    }
+    
+    if (successParam === "true") {
+      setIsConnecting(false); // Connection succeeded
     }
   }, [searchParams]);
+
+  // Handle cleanup when leaving page or refreshing (for incomplete OAuth flows)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Only disconnect if we were in the middle of connecting
+      // and the connection wasn't completed (no success redirect)
+      if (isConnecting && !searchParams.get("success")) {
+        // Use sendBeacon for reliable cleanup during page unload
+        const blob = new Blob([JSON.stringify({})], { type: "application/json" });
+        navigator.sendBeacon("/api/oauth/jobber/disconnect", blob);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      // If user switches tabs/minimizes during connection, reset state
+      if (document.visibilityState === "hidden" && isConnecting) {
+        setIsConnecting(false);
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isConnecting, searchParams]);
 
   useEffect(() => {
     let isMounted = true;
@@ -101,10 +144,34 @@ export default function ConnectPage() {
       }
     };
 
+    const checkJobberStatus = async () => {
+      try {
+        const response = await fetch("/api/oauth/jobber/status");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!isMounted) return;
+        
+        // Update connection state based on status
+        if (data.connected) {
+          setConnectionStates(prev => ({ ...prev, jobber: "connected" }));
+          setIsConnecting(false);
+        } else if (data.status === "token_expired") {
+          setConnectionStates(prev => ({ ...prev, jobber: "reconnect_required" }));
+        }
+      } catch {
+        // Silent failure
+      }
+    };
+
     loadJobberEvents();
+    checkJobberStatus();
+
+    // Poll status every 30 seconds to detect disconnections
+    const statusInterval = setInterval(checkJobberStatus, 30000);
 
     return () => {
       isMounted = false;
+      clearInterval(statusInterval);
     };
   }, []);
 
@@ -115,7 +182,12 @@ export default function ConnectPage() {
       return index === -1 ? Number.MAX_SAFE_INTEGER : index;
     };
 
-    return registry.slice().sort((a, b) => rank(a.tool) - rank(b.tool));
+    return registry
+      .filter(
+        (connector) => connector.isImplemented && oauthTools.includes(connector.tool)
+      )
+      .slice()
+      .sort((a, b) => rank(a.tool) - rank(b.tool));
   }, []);
 
   const getErrorMessage = (errorCode: string): string => {
@@ -146,20 +218,31 @@ export default function ConnectPage() {
     return errorMessages[errorCode] || "An error occurred connecting your account.";
   };
 
-  const handleConnect = (tool: string, isImplemented: boolean) => {
-    setError(null);
-
-    if (!isImplemented) return;
-
-    window.location.href = `/api/oauth/${tool}/start`;
-  };
-
   const handleCopyEventId = async () => {
     if (!jobberEvents?.last_event_id) return;
     try {
       await navigator.clipboard.writeText(jobberEvents.last_event_id);
     } catch {
       // Ignore clipboard errors
+    }
+  };
+
+  const handleDisconnect = async (provider: string) => {
+    try {
+      const response = await fetch(`/api/oauth/${provider}/disconnect`, {
+        method: "POST",
+      });
+      
+      if (response.ok) {
+        // Update UI state
+        setConnectionStates(prev => {
+          const newState = { ...prev };
+          delete newState[provider];
+          return newState;
+        });
+      }
+    } catch (error) {
+      console.error("Failed to disconnect:", error);
     }
   };
 
@@ -175,6 +258,12 @@ export default function ConnectPage() {
           Connect what you already use to generate a decision snapshot.
         </p>
         <p className="text-sm text-muted-foreground">Signal-only. No customer details. No line items.</p>
+        <p className="text-sm text-muted-foreground">
+          Need HoneyBook or ServiceTitan?{" "}
+          <Link href="/dashboard/supported" className="underline underline-offset-2">
+            Supported after onboarding
+          </Link>
+        </p>
       </div>
 
       {error && (
@@ -196,13 +285,12 @@ export default function ConnectPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {connectors.map((connector) => {
           const description = connectorDescriptions[connector.tool] || "Connect to see your signals.";
-          const isAvailable = connector.isImplemented;
           const status = connectionStates[connector.tool];
           const needsReconnect = status === "reconnect_required";
           const isConnected = status === "connected";
-          const jobberActionHref = needsReconnect
-            ? "/api/oauth/jobber/reconnect"
-            : "/api/oauth/jobber/start";
+          const connectHref = `/api/oauth/${connector.tool}/start`;
+          const reconnectHref = `/api/oauth/${connector.tool}/reconnect`;
+          const manageHref = `/connectors/${connector.tool}`;
 
           return (
             <Card key={connector.tool} className="transition-colors hover:border-primary/70">
@@ -217,11 +305,7 @@ export default function ConnectPage() {
                     <Badge variant="default" className="text-xs">
                       Connected
                     </Badge>
-                  ) : !isAvailable && (
-                    <Badge variant="secondary" className="text-xs">
-                      Soon
-                    </Badge>
-                  )}
+                  ) : null}
                 </div>
                 <CardDescription>
                   {description}
@@ -261,33 +345,41 @@ export default function ConnectPage() {
                   </div>
                 )}
 
-                {connector.tool === "jobber" ? (
-                  <Button
-                    asChild
-                    variant={isAvailable ? "default" : "outline"}
-                    className="w-full"
-                    disabled={!isAvailable && !needsReconnect}
-                  >
-                    <a href={jobberActionHref}>
-                      {needsReconnect
-                        ? `Reconnect ${connector.getDisplayName()}`
-                        : isConnected
-                          ? `Manage ${connector.getDisplayName()}`
-                          : `Connect ${connector.getDisplayName()}`}
+                {isConnected ? (
+                  <div className="flex flex-col gap-2">
+                    <Button asChild className="w-full">
+                      <a href={manageHref}>Manage {connector.getDisplayName()}</a>
+                    </Button>
+                    <div className="flex gap-2">
+                      <Button asChild variant="outline" className="flex-1">
+                        <a href={reconnectHref}>Reconnect</a>
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="flex-1"
+                        onClick={() => handleDisconnect(connector.tool)}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
+                  </div>
+                ) : needsReconnect ? (
+                  <Button asChild className="w-full">
+                    <a 
+                      href={reconnectHref}
+                      onClick={() => setIsConnecting(true)}
+                    >
+                      Reconnect {connector.getDisplayName()}
                     </a>
                   </Button>
                 ) : (
-                  <Button
-                    variant={isAvailable ? "default" : "outline"}
-                    className="w-full"
-                    disabled={!isAvailable && !needsReconnect}
-                    onClick={() => handleConnect(connector.tool, isAvailable || needsReconnect)}
-                  >
-                    {needsReconnect
-                      ? `Reconnect ${connector.getDisplayName()}`
-                      : isAvailable
-                        ? `Connect ${connector.getDisplayName()}`
-                        : "Coming soon"}
+                  <Button asChild className="w-full">
+                    <a 
+                      href={connectHref}
+                      onClick={() => setIsConnecting(true)}
+                    >
+                      Connect {connector.getDisplayName()}
+                    </a>
                   </Button>
                 )}
               </CardContent>

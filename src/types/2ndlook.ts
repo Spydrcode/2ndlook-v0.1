@@ -1,6 +1,11 @@
 // 2ndlook v0.1 TypeScript Types (LOCKED)
 
-export type SourceType = "csv" | "salesforce" | "hubspot";
+export type SourceType =
+  | "csv"
+  | "salesforce"
+  | "hubspot"
+  | "jobber"
+  | "invoice";
 
 export type SourceStatus =
   | "pending"
@@ -28,6 +33,14 @@ export type InvoiceStatus =
   | "overdue"
   | "refunded"
   | "partial"
+  | "unknown";
+
+export type JobStatus =
+  | "active"
+  | "archived"
+  | "converted"
+  | "completed"
+  | "cancelled"
   | "unknown";
 
 export type ConfidenceLevel = "low" | "medium" | "high";
@@ -70,6 +83,28 @@ export interface InvoiceNormalized {
   invoice_total: number;
   invoice_status: InvoiceStatus;
   linked_estimate_id?: string | null;
+  created_at?: string;
+}
+
+export interface JobNormalized {
+  id: string;
+  job_id: string;
+  source_id: string;
+  created_at: string;
+  start_at?: string | null;
+  end_at?: string | null;
+  job_status: JobStatus;
+  job_total?: number | null;
+  client_id?: string | null;
+}
+
+export interface ClientNormalized {
+  id: string;
+  client_id: string;
+  source_id: string;
+  created_at: string;
+  updated_at?: string | null;
+  is_lead?: boolean | null;
 }
 
 export interface EstimateBucket {

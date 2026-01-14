@@ -3,6 +3,7 @@ import {
   CheckSquare,
   ClipboardList,
   FileUp,
+  LifeBuoy,
   type LucideIcon,
   PieChart,
 } from "lucide-react";
@@ -41,6 +42,11 @@ export const sidebarItems: NavGroup[] = [
         title: "Connect",
         url: "/dashboard/connect",
         icon: Cable,
+      },
+      {
+        title: "Supported after onboarding",
+        url: "/dashboard/supported",
+        icon: LifeBuoy,
       },
       {
         title: "Import",

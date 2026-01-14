@@ -2,9 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
-import type { InvoiceCanonicalRow } from "@/lib/connectors";
-import { WINDOW_DAYS } from "@/lib/config/limits";
-import { normalizeInvoiceStatus } from "@/lib/ingest/statuses";
+import { normalizeInvoicesAndStore, type InvoiceRowInput } from "@/lib/ingest/normalize-invoices";
 
 interface InvoiceIngestResponse {
   received: number;
@@ -63,12 +61,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const invoices: InvoiceCanonicalRow[] = [];
-    let rejected = 0;
-
-    // Apply data limits: last WINDOW_DAYS OR max 100 invoices
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - WINDOW_DAYS);
+    const invoices: InvoiceRowInput[] = [];
 
     for (let i = 1; i < lines.length; i++) {
       try {
@@ -79,57 +72,24 @@ export async function POST(request: NextRequest) {
           row[key] = values[idx];
         });
 
-        const invoiceDate = new Date(row.invoice_date);
-        if (invoiceDate < ninetyDaysAgo) {
-          rejected++;
-          continue;
-        }
-
-        const status = normalizeInvoiceStatus(row.invoice_status);
-
         invoices.push({
           invoice_id: row.invoice_id,
           invoice_date: row.invoice_date,
           invoice_total: Number.parseFloat(row.invoice_total || "0"),
-          invoice_status: status,
+          invoice_status: row.invoice_status,
           linked_estimate_id: row.linked_estimate_id || null,
         });
       } catch {
-        rejected++;
+        // Skip malformed rows; normalization will track rejection counts
+        continue;
       }
     }
 
-    // Apply max 100 limit
-    const keptInvoices = invoices.slice(0, 100);
-    rejected += invoices.length - keptInvoices.length;
-
-    // Store normalized invoices
-    if (keptInvoices.length > 0) {
-      const dbRows = keptInvoices.map((inv) => ({
-        invoice_id: inv.invoice_id,
-        source_id,
-        invoice_date: inv.invoice_date,
-        invoice_total: inv.invoice_total,
-        invoice_status: inv.invoice_status,
-        linked_estimate_id: inv.linked_estimate_id,
-      }));
-
-      const { error: insertError } = await supabase
-        .from("invoices_normalized")
-        .insert(dbRows);
-
-      if (insertError) {
-        console.error("Invoice insert error:", insertError);
-        return NextResponse.json(
-          { error: "Failed to store invoices" },
-          { status: 500 }
-        );
-      }
-    }
+    const { kept, rejected } = await normalizeInvoicesAndStore(supabase, source_id, invoices);
 
     const response: InvoiceIngestResponse = {
       received: lines.length - 1,
-      kept: keptInvoices.length,
+      kept,
       rejected,
       source_id,
     };
@@ -143,5 +103,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-

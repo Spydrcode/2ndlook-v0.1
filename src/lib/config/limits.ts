@@ -1,5 +1,8 @@
 export const WINDOW_DAYS = 90;
 export const MAX_ESTIMATE_RECORDS = 100;
+export const MAX_INVOICE_RECORDS = 100;
+export const MAX_JOB_RECORDS = 100;
+export const MAX_CLIENT_RECORDS = 100;
 export const MIN_MEANINGFUL_ESTIMATES_PROD = 25;
 export const MIN_MEANINGFUL_ESTIMATES_TEST = 1;
 

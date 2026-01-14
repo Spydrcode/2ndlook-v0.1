@@ -6,6 +6,7 @@
 import { registerConnector } from "./connector";
 import { JobberConnector } from "./estimates/jobber";
 import { HousecallProConnector } from "./estimates/housecallpro";
+import { JobberInvoiceConnector } from "./invoices/jobber";
 import { QuickBooksInvoiceConnector } from "./invoices/quickbooks";
 import { SquareInvoiceConnector } from "./invoices/square";
 import { StripeInvoiceConnector } from "./invoices/stripe";
@@ -26,6 +27,7 @@ registerConnector(new WaveInvoiceConnector());
 registerConnector(new ZohoInvoiceConnector());
 registerConnector(new PaymoInvoiceConnector());
 registerConnector(new QuickBooksInvoiceConnector());
+registerConnector(new JobberInvoiceConnector());
 
 // Re-export registry functions for convenience
 export {
