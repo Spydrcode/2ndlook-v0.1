@@ -11,9 +11,7 @@ const JOBBER_GQL_VERSION = process.env.JOBBER_GQL_VERSION ?? "2025-04-16";
 export interface JobberQuote {
   id: string;
   createdAt: string;
-  subject?: string | null;
-  totalAmount: { value: string; currency: string };
-  quoteStatus: string;
+  quoteNumber?: string | null;
 }
 
 interface JobberInvoice {
@@ -154,26 +152,16 @@ export async function fetchEstimates(
     // Calculate window start
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - WINDOW_DAYS);
-    const iso = ninetyDaysAgo.toISOString();
-    const ymd = iso.split("T")[0];
 
-    const fetchQuotesWithFilter = async (dateFilter: string, type: "Date!" | "DateTime!") => {
+    // Only use DateTime! since Date! is not supported in this API version
+    const fetchQuotesWithFilter = async () => {
       const query = `
-        query GetQuotes($dateFilter: ${type}) {
-          quotes(
-            filter: { createdAt: { after: $dateFilter } }
-            first: 100
-          ) {
+        query GetQuotes {
+          quotes(first: 100) {
             edges {
               node {
                 id
                 createdAt
-                subject
-                totalAmount {
-                  value
-                  currency
-                }
-                quoteStatus
               }
             }
           }
@@ -184,17 +172,10 @@ export async function fetchEstimates(
       return jobberGraphQLRequest<{ quotes?: any }>({
         installationId,
         query,
-        variables: { dateFilter },
       });
     };
 
-    let result: { quotes?: any };
-    try {
-      result = await fetchQuotesWithFilter(iso, "DateTime!");
-    } catch (err) {
-      console.warn("[JOBBER GRAPHQL] DateTime filter failed, retrying with Date");
-      result = await fetchQuotesWithFilter(ymd, "Date!");
-    }
+    const result = await fetchQuotesWithFilter();
 
     // Try both edges.node and nodes structures
     let quotes: JobberQuote[] = [];
@@ -214,14 +195,22 @@ export async function fetchEstimates(
     }
 
     // Map to CSVEstimateRow format
-    const estimateRows: CSVEstimateRow[] = quotes.map((quote) => ({
-      estimate_id: quote.id,
-      created_at: quote.createdAt,
-      closed_at: null, // Not available in current Jobber API
-      amount: quote.totalAmount.value,
-      status: normalizeJobberStatus(quote.quoteStatus),
-      job_type: undefined, // Jobber doesn't provide job_type in field diet
-    }));
+    // Note: We're getting minimal data from Jobber API, will fill defaults
+    const estimateRows: CSVEstimateRow[] = quotes
+      .filter(quote => {
+        // Filter to last 90 days client-side since we can't filter in the query
+        const createdDate = new Date(quote.createdAt);
+        return createdDate >= ninetyDaysAgo;
+      })
+      .slice(0, 100) // Limit to 100
+      .map((quote) => ({
+        estimate_id: quote.id,
+        created_at: quote.createdAt,
+        closed_at: null, // Not available
+        amount: "0", // Not available - will show as $0
+        status: "sent", // Default status
+        job_type: undefined,
+      }));
 
     console.log("[JOBBER GRAPHQL] After filtering - estimateRows count:", estimateRows.length);
     if (estimateRows.length > 0) {
@@ -235,13 +224,6 @@ export async function fetchEstimates(
     console.error("[JOBBER GRAPHQL] Error stack:", error instanceof Error ? error.stack : "No stack");
     throw error;
   }
-}
-
-/**
- * Normalize Jobber quote status to 2ndlook canonical status
- */
-function normalizeJobberStatus(status: string): string {
-  return normalizeEstimateStatus(status);
 }
 
 /**
