@@ -1,6 +1,6 @@
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getConnection } from "@/lib/oauth/connections";
 import { encrypt } from "@/lib/security/crypto";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface JobberTokens {
   access_token: string;
@@ -10,13 +10,11 @@ export interface JobberTokens {
 
 /**
  * Refresh Jobber OAuth tokens
- * 
+ *
  * IMPORTANT: Jobber may rotate the refresh token on each refresh.
  * Always persist the new refresh_token if provided.
  */
-export async function refreshJobberToken(
-  installationId: string
-): Promise<JobberTokens | null> {
+export async function refreshJobberToken(installationId: string): Promise<JobberTokens | null> {
   try {
     const connection = await getConnection(installationId, "jobber");
 
@@ -68,9 +66,7 @@ export async function refreshJobberToken(
       .from("oauth_connections")
       .update({
         access_token_enc: encrypt(access_token),
-        refresh_token_enc: refresh_token
-          ? encrypt(refresh_token)
-          : encrypt(connection.refresh_token),
+        refresh_token_enc: refresh_token ? encrypt(refresh_token) : encrypt(connection.refresh_token),
         token_expires_at: expiresAt,
         updated_at: new Date().toISOString(),
       })
@@ -95,7 +91,7 @@ export async function refreshJobberToken(
 
 /**
  * Get valid access token for Jobber API
- * 
+ *
  * Fetches current token and refreshes if expired.
  * Prevents race conditions by locking during refresh.
  */
@@ -103,9 +99,7 @@ export async function refreshJobberToken(
 // Simple in-memory lock to prevent concurrent refresh attempts
 const refreshLocks = new Map<string, Promise<JobberTokens | null>>();
 
-export async function getJobberAccessToken(
-  installationId: string
-): Promise<string | null> {
+export async function getJobberAccessToken(installationId: string): Promise<string | null> {
   try {
     const connection = await getConnection(installationId, "jobber");
     if (!connection) {
@@ -114,9 +108,7 @@ export async function getJobberAccessToken(
     }
 
     // Check if token is expired (with 5min buffer)
-    const expiresAt = connection.token_expires_at
-      ? new Date(connection.token_expires_at)
-      : null;
+    const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at) : null;
     const now = new Date();
     const bufferMs = 5 * 60 * 1000; // 5 minutes
 
@@ -151,5 +143,3 @@ export async function getJobberAccessToken(
     return null;
   }
 }
-
-

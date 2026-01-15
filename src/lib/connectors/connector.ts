@@ -4,12 +4,12 @@
  */
 
 import type {
+  CalendarSignals,
   ConnectorCategory,
   ConnectorTool,
+  CrmSignals,
   EstimateCanonicalRow,
   InvoiceCanonicalRow,
-  CalendarSignals,
-  CrmSignals,
 } from "./types";
 
 /**

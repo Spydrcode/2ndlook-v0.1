@@ -2,16 +2,17 @@
 
 /**
  * Test script to verify Jobber GraphQL error logging
- * 
+ *
  * Makes a direct GraphQL request to test error handling
- * 
+ *
  * Usage:
  *   JOBBER_GQL_VERSION=invalid-version-404 npx tsx scripts/test-jobber-graphql-direct.ts
  */
 
-import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
-import { createDecipheriv } from "crypto";
+import { config } from "dotenv";
+
+import { createDecipheriv } from "node:crypto";
 
 // Load environment
 config({ path: ".env.local" });
@@ -68,8 +69,8 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
     autoRefreshToken: false,
-    persistSession: false
-  }
+    persistSession: false,
+  },
 });
 
 async function testJobberGraphQLError() {
@@ -95,7 +96,7 @@ async function testJobberGraphQLError() {
 
   // Decrypt access token
   const accessToken = safeDecrypt(connection.access_token_enc);
-  
+
   if (!accessToken) {
     console.error("❌ Failed to decrypt access token");
     process.exit(1);
@@ -103,13 +104,18 @@ async function testJobberGraphQLError() {
 
   console.log("🔑 Access token decrypted successfully (length:", accessToken.length, ")");
 
-  // Make the GraphQL request
+  // Make the GraphQL request with corrected schema for version 2025-04-16
   const query = `
     query {
       quotes(first: 1) {
         nodes {
           id
           createdAt
+          quoteNumber
+          quoteStatus
+          amounts {
+            subtotal
+          }
         }
       }
     }
@@ -120,7 +126,7 @@ async function testJobberGraphQLError() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         "X-JOBBER-GRAPHQL-VERSION": JOBBER_GQL_VERSION,
       },
       body: JSON.stringify({ query }),
@@ -132,19 +138,19 @@ async function testJobberGraphQLError() {
       response.headers.get("cf-ray");
 
     const text = await response.text();
-    
+
     console.log("📋 Response Details:");
     console.log("   status:", response.status);
     console.log("   statusText:", response.statusText);
     console.log("   requestId:", requestId);
     console.log("   body (first 500 chars):", text.slice(0, 500));
-    
+
     if (!response.ok) {
       console.log("\n❌ Request failed");
       console.log("\n✅ ERROR LOGGING VERIFICATION - ALL FIELDS PRESENT:");
       console.log("   ✓ status:", response.status, "✅");
       console.log("   ✓ statusText:", response.statusText, "✅");
-      console.log("   ✓ body:", text.slice(0, 100) + "...", "✅");
+      console.log("   ✓ body:", `${text.slice(0, 100)}...`, "✅");
       console.log("   ✓ request-id:", requestId, "✅");
       console.log("\n🎉 SUCCESS: All error details are properly captured and logged!");
       console.log("   - HTTP status code is available");
@@ -153,20 +159,25 @@ async function testJobberGraphQLError() {
       console.log("   - Request ID header is captured");
     } else {
       console.log("\n✅ Request succeeded!");
-      console.log("   This might mean:");
-      console.log("   1. The version is actually valid");
-      console.log("   2. Jobber is lenient with version headers");
-      
-      let json;
+
+      let json: unknown;
       try {
         json = JSON.parse(text);
         console.log("\n📄 Response data:", JSON.stringify(json, null, 2));
-      } catch (e) {
+
+        // Verify corrected schema fields
+        if (json.data?.quotes?.nodes?.[0]) {
+          const quote = json.data.quotes.nodes[0];
+          console.log("\n🎉 VERIFIED: Corrected schema fields:");
+          console.log("   ✓ quoteStatus:", quote.quoteStatus);
+          console.log("   ✓ amounts.subtotal:", quote.amounts?.subtotal);
+        }
+      } catch (_e) {
         console.log("\n⚠️  Could not parse response as JSON");
       }
     }
-  } catch (err: any) {
-    console.error("\n❌ Fetch error:", err.message);
+  } catch (err: unknown) {
+    console.error("\n❌ Fetch error:", err instanceof Error ? err.message : String(err));
   }
 }
 

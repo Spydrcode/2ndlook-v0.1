@@ -1,13 +1,8 @@
 import "server-only";
+
 import { exchangeOAuthToken, type OAuthTokenResponse } from "@/lib/oauth/client";
 
-export type OAuthProviderTool =
-  | "stripe"
-  | "square"
-  | "quickbooks"
-  | "zoho-invoice"
-  | "wave"
-  | "housecall-pro";
+export type OAuthProviderTool = "stripe" | "square" | "quickbooks" | "zoho-invoice" | "wave" | "housecall-pro";
 
 export interface OAuthProviderConfig {
   tool: OAuthProviderTool;
@@ -16,20 +11,9 @@ export interface OAuthProviderConfig {
   scopes: string[];
   usesPkce: boolean;
   extraAuthorizeParams?: Record<string, string>;
-  buildAuthorizeUrl: (params: {
-    state: string;
-    redirectUri: string;
-    codeChallenge?: string;
-  }) => string;
-  exchangeCode: (params: {
-    code: string;
-    redirectUri: string;
-    codeVerifier?: string;
-  }) => Promise<OAuthTokenResponse>;
-  parseExternalAccountId: (
-    tokenResponse: OAuthTokenResponse,
-    callbackQuery: URLSearchParams
-  ) => string | null;
+  buildAuthorizeUrl: (params: { state: string; redirectUri: string; codeChallenge?: string }) => string;
+  exchangeCode: (params: { code: string; redirectUri: string; codeVerifier?: string }) => Promise<OAuthTokenResponse>;
+  parseExternalAccountId: (tokenResponse: OAuthTokenResponse, callbackQuery: URLSearchParams) => string | null;
 }
 
 function getEnv(key: string): string {
@@ -40,10 +24,7 @@ function getEnv(key: string): string {
   return value;
 }
 
-function buildAuthorizeUrl(
-  baseUrl: string,
-  params: Record<string, string | undefined>
-): string {
+function buildAuthorizeUrl(baseUrl: string, params: Record<string, string | undefined>): string {
   const url = new URL(baseUrl);
   for (const [key, value] of Object.entries(params)) {
     if (value) {
@@ -80,9 +61,7 @@ const stripeProvider: OAuthProviderConfig = {
       },
     }),
   parseExternalAccountId: (tokenResponse) =>
-    typeof tokenResponse.stripe_user_id === "string"
-      ? tokenResponse.stripe_user_id
-      : null,
+    typeof tokenResponse.stripe_user_id === "string" ? tokenResponse.stripe_user_id : null,
 };
 
 // Square OAuth + PKCE: https://connect.squareup.com/oauth2/authorize
@@ -137,9 +116,9 @@ const quickbooksProvider: OAuthProviderConfig = {
     exchangeOAuthToken({
       tokenUrl: "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
       headers: {
-        Authorization: `Basic ${Buffer.from(
-          `${getEnv("QBO_CLIENT_ID")}:${getEnv("QBO_CLIENT_SECRET")}`
-        ).toString("base64")}`,
+        Authorization: `Basic ${Buffer.from(`${getEnv("QBO_CLIENT_ID")}:${getEnv("QBO_CLIENT_SECRET")}`).toString(
+          "base64",
+        )}`,
       },
       body: {
         grant_type: "authorization_code",
@@ -147,8 +126,7 @@ const quickbooksProvider: OAuthProviderConfig = {
         redirect_uri: redirectUri,
       },
     }),
-  parseExternalAccountId: (_tokenResponse, callbackQuery) =>
-    callbackQuery.get("realmId"),
+  parseExternalAccountId: (_tokenResponse, callbackQuery) => callbackQuery.get("realmId"),
 };
 
 // Zoho Accounts OAuth2: https://accounts.zoho.com/oauth/v2/token
@@ -184,9 +162,7 @@ const zohoProvider: OAuthProviderConfig = {
     });
   },
   parseExternalAccountId: (tokenResponse) =>
-    typeof tokenResponse.organization_id === "string"
-      ? tokenResponse.organization_id
-      : null,
+    typeof tokenResponse.organization_id === "string" ? tokenResponse.organization_id : null,
 };
 
 // Wave OAuth2: https://api.waveapps.com/oauth2/authorize

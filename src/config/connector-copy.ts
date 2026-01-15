@@ -18,17 +18,14 @@ export interface ConnectorCopy {
 export const connectorLandingCopy: Record<string, ConnectorCopy> = {
   jobber: {
     heroTitle: "For Jobber users who already have the numbers but still carry the decisions.",
-    heroSubtitle: "2ndlook turns recent estimates into a clear snapshot of what's happening, without adding more tools.",
+    heroSubtitle:
+      "2ndlook turns recent estimates into a clear snapshot of what's happening, without adding more tools.",
     whatThisShows: [
       "Which price ranges close fastest",
       "How long decisions really take",
       "Weekly demand signals you can plan around",
     ],
-    whatItDoesntDo: [
-      "Doesn't change Jobber",
-      "Doesn't use customer or line-item details",
-      "Doesn't stay connected",
-    ],
+    whatItDoesntDo: ["Doesn't change Jobber", "Doesn't use customer or line-item details", "Doesn't stay connected"],
   },
   quickbooks: {
     heroTitle: "QuickBooks tracks money. 2ndlook shows decision pressure.",
@@ -74,7 +71,8 @@ export const connectorLandingCopy: Record<string, ConnectorCopy> = {
   },
   stripe: {
     heroTitle: "Stripe handles payments. 2ndlook shows the patterns forming behind them.",
-    heroSubtitle: "A calm snapshot from recent invoices so you can see demand and decision timing without extra dashboards.",
+    heroSubtitle:
+      "A calm snapshot from recent invoices so you can see demand and decision timing without extra dashboards.",
     whatThisShows: [
       "Invoice amounts that move quickly",
       "Decision timing by size",
@@ -116,12 +114,9 @@ export const connectorLandingCopy: Record<string, ConnectorCopy> = {
   },
   "zoho-invoice": {
     heroTitle: "Zoho Invoice keeps records. 2ndlook shows decision pressure.",
-    heroSubtitle: "A one-time snapshot from recent invoices to see pricing and timing patterns without extra dashboards.",
-    whatThisShows: [
-      "Amounts that move quickly",
-      "Decision timelines you can actually see",
-      "Weekly demand signals",
-    ],
+    heroSubtitle:
+      "A one-time snapshot from recent invoices to see pricing and timing patterns without extra dashboards.",
+    whatThisShows: ["Amounts that move quickly", "Decision timelines you can actually see", "Weekly demand signals"],
     whatItDoesntDo: [
       "Doesn't change Zoho Invoice",
       "Doesn't use customer or line-item details",

@@ -1,10 +1,11 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getOrCreateInstallationId } from "@/lib/installations/cookie";
-import type { IngestResponse, CSVEstimateRow } from "@/types/2ndlook";
-import { normalizeAndStore } from "@/lib/ingest/normalize-estimates";
+
 import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
+import { normalizeAndStore } from "@/lib/ingest/normalize-estimates";
+import { getOrCreateInstallationId } from "@/lib/installations/cookie";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { CSVEstimateRow, IngestResponse } from "@/types/2ndlook";
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,10 +18,7 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File;
 
     if (!sourceId || !file) {
-      return NextResponse.json(
-        { error: "source_id and file are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "source_id and file are required" }, { status: 400 });
     }
 
     // Verify source ownership
@@ -39,18 +37,11 @@ export async function POST(request: NextRequest) {
     const rows = parseCSV(text);
 
     if (rows.length === 0) {
-      return NextResponse.json(
-        { error: "No valid rows found in CSV" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No valid rows found in CSV" }, { status: 400 });
     }
 
     // Normalize and filter
-    const { kept, rejected, meaningful } = await normalizeAndStore(
-      supabase,
-      sourceId,
-      rows
-    );
+    const { kept, rejected, meaningful } = await normalizeAndStore(supabase, sourceId, rows);
 
     await supabase
       .from("sources")
@@ -73,10 +64,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("Ingest error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -111,5 +99,3 @@ function parseCSV(text: string): CSVEstimateRow[] {
 
   return rows;
 }
-
-

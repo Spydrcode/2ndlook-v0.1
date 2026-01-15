@@ -19,10 +19,9 @@ export default function SupportedAfterOnboardingPage() {
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Supported after onboarding</h1>
+        <h1 className="font-semibold text-2xl tracking-tight">Supported after onboarding</h1>
         <p className="text-muted-foreground">
-          Some systems require partner access or custom setup. We connect these once we&apos;re
-          working together.
+          Some systems require partner access or custom setup. We connect these once we&apos;re working together.
         </p>
       </div>
 

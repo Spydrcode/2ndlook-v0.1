@@ -1,6 +1,6 @@
 /**
  * System prompt for snapshot analysis
- * 
+ *
  * Defines the AI's role, context, and behavior for analyzing
  * bucketed estimate data and generating insights.
  */

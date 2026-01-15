@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+
 import { getInstallationId } from "@/lib/installations/cookie";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -30,9 +31,7 @@ export async function GET(request: NextRequest) {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("oauth_connections")
-    .select(
-      "provider, token_expires_at, refresh_token_enc, external_account_id, updated_at, access_token_enc"
-    )
+    .select("provider, token_expires_at, refresh_token_enc, external_account_id, updated_at, access_token_enc")
     .eq("installation_id", installationId);
 
   if (error || !data) {

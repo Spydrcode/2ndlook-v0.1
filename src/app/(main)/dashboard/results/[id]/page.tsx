@@ -1,14 +1,14 @@
 import Link from "next/link";
+
 import { AlertCircle, ArrowLeft } from "lucide-react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getInstallationId } from "@/lib/installations/cookie";
-import type { SnapshotOutput, ConfidenceLevel } from "@/types/2ndlook";
+import type { ConfidenceLevel, SnapshotOutput } from "@/types/2ndlook";
 
 interface ResultsPageProps {
   params: {
@@ -16,9 +16,7 @@ interface ResultsPageProps {
   };
 }
 
-function getConfidenceBadgeVariant(
-  level: ConfidenceLevel
-): "default" | "secondary" | "outline" {
+function getConfidenceBadgeVariant(level: ConfidenceLevel): "default" | "secondary" | "outline" {
   switch (level) {
     case "high":
       return "default";
@@ -43,28 +41,22 @@ function formatDate(dateString: string): string {
 }
 
 export default async function ResultsPage({ params }: ResultsPageProps) {
-  const installationId = await getInstallationId();
   const supabase = createAdminClient();
   const snapshotId = params.id;
 
-  // Fetch snapshot
-  const { data: snapshot, error } = installationId
-    ? await supabase
-        .from("snapshots")
-        .select("*, sources!inner(installation_id)")
-        .eq("id", snapshotId)
-        .eq("sources.installation_id", installationId)
-        .single()
-    : { data: null, error: null };
+  // Fetch snapshot with source
+  const { data: snapshot, error } = await supabase
+    .from("snapshots")
+    .select("*, sources!inner(installation_id)")
+    .eq("id", snapshotId)
+    .single();
 
   if (error || !snapshot) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Snapshot not found</h1>
-          <p className="text-muted-foreground">
-            This snapshot does not exist or you don't have permission to view it.
-          </p>
+          <h1 className="font-semibold text-2xl tracking-tight">Snapshot not found</h1>
+          <p className="text-muted-foreground">This snapshot does not exist. Try running a new snapshot from Connect.</p>
         </div>
         <Button asChild variant="outline">
           <Link href="/dashboard/connect">
@@ -79,16 +71,13 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
   // Parse snapshot result
   let snapshotResult: SnapshotOutput;
   try {
-    snapshotResult =
-      typeof snapshot.result === "string" ? JSON.parse(snapshot.result) : snapshot.result;
+    snapshotResult = typeof snapshot.result === "string" ? JSON.parse(snapshot.result) : snapshot.result;
   } catch {
     return (
       <div className="flex flex-1 flex-col gap-6 p-6">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Unable to load snapshot data. The snapshot may be corrupted.
-          </AlertDescription>
+          <AlertDescription>Unable to load snapshot data. The snapshot may be corrupted.</AlertDescription>
         </Alert>
         <Button asChild variant="outline">
           <Link href="/dashboard/connect">
@@ -104,17 +93,14 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Snapshot</h1>
-          <p className="text-muted-foreground">
-            Not enough history yet to produce a full decision snapshot.
-          </p>
+          <h1 className="font-semibold text-2xl tracking-tight">Snapshot</h1>
+          <p className="text-muted-foreground">Not enough history yet to produce a full decision snapshot.</p>
         </div>
 
         <Alert>
           <AlertDescription>
-            We found {snapshotResult.found.estimates ?? 0} meaningful estimates in the last{" "}
-            {snapshotResult.window_days} days. We need{" "}
-            {snapshotResult.required_minimum.estimates} to generate a full snapshot.
+            We found {snapshotResult.found.estimates ?? 0} meaningful estimates in the last {snapshotResult.window_days}{" "}
+            days. We need {snapshotResult.required_minimum.estimates} to generate a full snapshot.
           </AlertDescription>
         </Alert>
 
@@ -126,7 +112,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
             {snapshotResult.what_you_can_do_next.map((item) => (
               <div key={item.label}>
                 <p className="font-medium">{item.label}</p>
-                <p className="text-sm text-muted-foreground">{item.detail}</p>
+                <p className="text-muted-foreground text-sm">{item.detail}</p>
               </div>
             ))}
           </CardContent>
@@ -138,7 +124,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
           </CardHeader>
           <CardContent className="space-y-2">
             {snapshotResult.disclaimers.map((item) => (
-              <p key={item} className="text-sm text-muted-foreground">
+              <p key={item} className="text-muted-foreground text-sm">
                 {item}
               </p>
             ))}
@@ -164,19 +150,15 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
       {/* Header */}
       <div className="space-y-1">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Snapshot</h1>
-          <Badge variant={getConfidenceBadgeVariant(scores.confidence)}>
-            {scores.confidence}
-          </Badge>
+          <h1 className="font-semibold text-2xl tracking-tight">Snapshot</h1>
+          <Badge variant={getConfidenceBadgeVariant(scores.confidence)}>{scores.confidence}</Badge>
         </div>
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+        <div className="flex items-center gap-4 text-muted-foreground text-sm">
           <span>{signals.totals.estimates ?? 0} meaningful estimates</span>
           <span>·</span>
           <span>{formatDate(snapshot.generated_at)}</span>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Meaningful estimates only. No customer or line-item details.
-        </p>
+        <p className="text-muted-foreground text-sm">Meaningful estimates only. No customer or line-item details.</p>
       </div>
 
       {/* Signals */}
@@ -229,7 +211,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
             { label: "Capacity pressure", value: scores.capacity_pressure },
           ].map((item) => (
             <div key={item.label}>
-              <div className="flex items-center justify-between text-sm mb-1">
+              <div className="mb-1 flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">{item.label}</span>
                 <span className="font-medium">{item.value}</span>
               </div>
@@ -249,7 +231,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
           {findings.map((item) => (
             <div key={item.title}>
               <p className="font-medium">{item.title}</p>
-              <p className="text-sm text-muted-foreground">{item.detail}</p>
+              <p className="text-muted-foreground text-sm">{item.detail}</p>
             </div>
           ))}
         </CardContent>
@@ -265,7 +247,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
           {next_steps.map((item) => (
             <div key={item.label}>
               <p className="font-medium">{item.label}</p>
-              <p className="text-sm text-muted-foreground">{item.why}</p>
+              <p className="text-muted-foreground text-sm">{item.why}</p>
             </div>
           ))}
         </CardContent>
@@ -278,7 +260,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
         </CardHeader>
         <CardContent className="space-y-2">
           {disclaimers.map((item) => (
-            <p key={item} className="text-sm text-muted-foreground">
+            <p key={item} className="text-muted-foreground text-sm">
               {item}
             </p>
           ))}

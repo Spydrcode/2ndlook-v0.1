@@ -1,11 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getOrCreateInstallationId } from "@/lib/installations/cookie";
+import { type NextRequest, NextResponse } from "next/server";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ source_id: string }> }
-) {
+import { getOrCreateInstallationId } from "@/lib/installations/cookie";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ source_id: string }> }) {
   try {
     const installationId = await getOrCreateInstallationId();
     const supabase = createAdminClient();
@@ -31,19 +29,12 @@ export async function GET(
       .single();
 
     if (bucketError || !bucket) {
-      return NextResponse.json(
-        { error: "No bucket data found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "No bucket data found" }, { status: 404 });
     }
 
     return NextResponse.json(bucket, { status: 200 });
   } catch (error) {
     console.error("Bucket fetch error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-

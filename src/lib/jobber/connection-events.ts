@@ -1,6 +1,8 @@
 import "server-only";
-import { randomUUID } from "crypto";
+
 import { createAdminClient } from "@/lib/supabase/admin";
+
+import { randomUUID } from "node:crypto";
 
 export type JobberConnectionPhase =
   | "oauth_start"

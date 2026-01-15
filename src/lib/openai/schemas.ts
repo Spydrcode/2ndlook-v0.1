@@ -38,7 +38,7 @@ export const snapshotResultSchema = z
             title: shortTitle,
             detail: shortDetail,
           })
-          .strict()
+          .strict(),
       )
       .max(6),
     next_steps: z
@@ -48,7 +48,7 @@ export const snapshotResultSchema = z
             label: shortTitle,
             why: shortDetail,
           })
-          .strict()
+          .strict(),
       )
       .max(6),
     disclaimers: z.array(shortText).max(6),
@@ -78,7 +78,7 @@ export const insufficientDataResultSchema = z
             label: shortTitle,
             detail: shortDetail,
           })
-          .strict()
+          .strict(),
       )
       .max(6),
     confidence: z.literal("low"),
@@ -86,23 +86,12 @@ export const insufficientDataResultSchema = z
   })
   .strict();
 
-export const snapshotOutputSchema = z.union([
-  snapshotResultSchema,
-  insufficientDataResultSchema,
-]);
+export const snapshotOutputSchema = z.union([snapshotResultSchema, insufficientDataResultSchema]);
 
 export const snapshotResultJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "kind",
-    "window_days",
-    "signals",
-    "scores",
-    "findings",
-    "next_steps",
-    "disclaimers",
-  ],
+  required: ["kind", "window_days", "signals", "scores", "findings", "next_steps", "disclaimers"],
   properties: {
     kind: { const: "snapshot" },
     window_days: { const: 90 },
@@ -134,13 +123,7 @@ export const snapshotResultJsonSchema = {
     scores: {
       type: "object",
       additionalProperties: false,
-      required: [
-        "demand_signal",
-        "cash_signal",
-        "decision_latency",
-        "capacity_pressure",
-        "confidence",
-      ],
+      required: ["demand_signal", "cash_signal", "decision_latency", "capacity_pressure", "confidence"],
       properties: {
         demand_signal: { type: "number", minimum: 0, maximum: 100 },
         cash_signal: { type: "number", minimum: 0, maximum: 100 },
@@ -186,15 +169,7 @@ export const snapshotResultJsonSchema = {
 export const insufficientDataResultJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "kind",
-    "window_days",
-    "required_minimum",
-    "found",
-    "what_you_can_do_next",
-    "confidence",
-    "disclaimers",
-  ],
+  required: ["kind", "window_days", "required_minimum", "found", "what_you_can_do_next", "confidence", "disclaimers"],
   properties: {
     kind: { const: "insufficient_data" },
     window_days: { const: 90 },
@@ -241,4 +216,3 @@ export const insufficientDataResultJsonSchema = {
 export const snapshotOutputJsonSchema = {
   oneOf: [snapshotResultJsonSchema, insufficientDataResultJsonSchema],
 } as const;
-

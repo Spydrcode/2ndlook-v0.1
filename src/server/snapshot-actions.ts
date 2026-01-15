@@ -1,16 +1,16 @@
 "use server";
 
-import { runSnapshotOrchestrator } from "@/lib/orchestrator/runSnapshot";
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
+import { runSnapshotOrchestrator } from "@/lib/orchestrator/runSnapshot";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * Server action to generate a snapshot using the orchestrator
- * 
+ *
  * Example usage in a React component:
  * ```tsx
  * import { generateSnapshotAction } from "@/server/server-actions";
- * 
+ *
  * async function handleGenerate() {
  *   const result = await generateSnapshotAction(sourceId);
  *   if (result.error) {
@@ -21,10 +21,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * }
  * ```
  */
-export async function generateSnapshotAction(sourceId: string): Promise<
-  | { snapshot_id: string; error?: never }
-  | { snapshot_id?: never; error: string }
-> {
+export async function generateSnapshotAction(
+  sourceId: string,
+): Promise<{ snapshot_id: string; error?: never } | { snapshot_id?: never; error: string }> {
   try {
     const installationId = await getOrCreateInstallationId();
     const supabase = createAdminClient();
@@ -49,12 +48,7 @@ export async function generateSnapshotAction(sourceId: string): Promise<
   } catch (error) {
     console.error("[Server Action] Snapshot generation failed:", error);
     return {
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to generate snapshot",
+      error: error instanceof Error ? error.message : "Failed to generate snapshot",
     };
   }
 }
-
-

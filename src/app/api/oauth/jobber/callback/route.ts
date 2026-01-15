@@ -1,24 +1,25 @@
+import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { upsertConnection } from "@/lib/oauth/connections";
-import { ingestJobberEstimates } from "@/lib/jobber/ingest";
+
 import { allowSmallDatasets, MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
 import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
-import { randomUUID } from "crypto";
+import { ingestJobberEstimates } from "@/lib/jobber/ingest";
+import { upsertConnection } from "@/lib/oauth/connections";
+
+import { randomUUID } from "node:crypto";
 export const runtime = "nodejs";
 
 /**
  * OAuth Callback Route for Jobber
- * 
+ *
  * Handles the OAuth redirect from Jobber with authorization code.
  * Validates state, exchanges code for tokens, persists credentials,
  * triggers ingestion, and redirects user to review page.
  */
 export async function GET(request: NextRequest) {
-  const appUrl =
-    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
-  
+  const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+
   // Helper to create error response with cookie cleanup
   const errorResponse = (errorCode: string, eventId?: string) => {
     const url = new URL(`${appUrl}/dashboard/connect`);
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
     response.cookies.delete("jobber_event_id");
     return response;
   };
-  
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get("code");
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
 
     const logEvent = async (
       phase: Parameters<typeof logJobberConnectionEvent>[0]["phase"],
-      details?: Record<string, unknown>
+      details?: Record<string, unknown>,
     ) => {
       if (!installationId) return;
       try {
@@ -205,13 +206,10 @@ export async function GET(request: NextRequest) {
 
     const sourceId = ingestionResult.source_id;
 
-    if (
-      allowSmallDatasets() &&
-      (ingestionResult.meaningful_estimates || 0) < MIN_MEANINGFUL_ESTIMATES_PROD
-    ) {
+    if (allowSmallDatasets() && (ingestionResult.meaningful_estimates || 0) < MIN_MEANINGFUL_ESTIMATES_PROD) {
       // Clear OAuth cookies on completion
       const response = NextResponse.redirect(
-        `${appUrl}/dashboard/review?source_id=${sourceId}&notice=insufficient_data`
+        `${appUrl}/dashboard/review?source_id=${sourceId}&notice=insufficient_data`,
       );
       response.cookies.delete("jobber_oauth_state");
       response.cookies.delete("jobber_oauth_installation");
@@ -220,9 +218,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Clear OAuth cookies on successful completion
-    const response = NextResponse.redirect(
-      `${appUrl}/dashboard/review?source_id=${sourceId}&success=true`
-    );
+    const response = NextResponse.redirect(`${appUrl}/dashboard/review?source_id=${sourceId}&success=true`);
     response.cookies.delete("jobber_oauth_state");
     response.cookies.delete("jobber_oauth_installation");
     response.cookies.delete("jobber_event_id");

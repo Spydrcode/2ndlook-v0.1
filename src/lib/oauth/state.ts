@@ -1,6 +1,8 @@
 import "server-only";
-import { createHmac, randomBytes, timingSafeEqual } from "crypto";
-import { encrypt, decrypt } from "@/lib/security/crypto";
+
+import { decrypt, encrypt } from "@/lib/security/crypto";
+
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -14,11 +16,7 @@ export interface OAuthStatePayload {
 }
 
 function base64UrlEncode(value: string): string {
-  return Buffer.from(value, "utf8")
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+  return Buffer.from(value, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function base64UrlDecode(value: string): string {
@@ -58,9 +56,7 @@ export function createOAuthState(input: {
 export function serializeOAuthState(payload: OAuthStatePayload): string {
   const payloadToStore = {
     ...payload,
-    pkce_verifier: payload.pkce_verifier
-      ? encrypt(payload.pkce_verifier)
-      : undefined,
+    pkce_verifier: payload.pkce_verifier ? encrypt(payload.pkce_verifier) : undefined,
   };
   const json = JSON.stringify(payloadToStore);
   const encoded = base64UrlEncode(json);
@@ -77,10 +73,7 @@ export function verifyOAuthState(state: string): OAuthStatePayload {
   const expected = sign(encoded);
   const expectedBuf = Buffer.from(expected);
   const actualBuf = Buffer.from(signature);
-  if (
-    expectedBuf.length !== actualBuf.length ||
-    !timingSafeEqual(expectedBuf, actualBuf)
-  ) {
+  if (expectedBuf.length !== actualBuf.length || !timingSafeEqual(expectedBuf, actualBuf)) {
     throw new Error("oauth_state_invalid");
   }
 

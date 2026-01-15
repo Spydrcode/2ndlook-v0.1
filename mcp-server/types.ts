@@ -3,12 +3,7 @@
 
 export type SourceType = "csv" | "salesforce" | "hubspot";
 
-export type SourceStatus =
-  | "pending"
-  | "ingested"
-  | "bucketed"
-  | "snapshot_generated"
-  | "insufficient_data";
+export type SourceStatus = "pending" | "ingested" | "bucketed" | "snapshot_generated" | "insufficient_data";
 
 export type EstimateStatus =
   | "draft"
@@ -75,6 +70,7 @@ export interface EstimateBucket {
   latency_band_8_21: number;
   latency_band_22_plus: number;
   weekly_volume: { week: string; count: number }[];
+  job_type_distribution?: { job_type: string; count: number }[];
   created_at: string;
 }
 

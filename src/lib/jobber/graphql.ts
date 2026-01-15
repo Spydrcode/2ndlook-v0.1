@@ -1,17 +1,23 @@
-import { getJobberAccessToken } from "./oauth";
-import type { CSVEstimateRow } from "@/types/2ndlook";
+import { WINDOW_DAYS } from "@/lib/config/limits";
+import type { ClientRowInput } from "@/lib/ingest/normalize-clients";
 import type { InvoiceRowInput } from "@/lib/ingest/normalize-invoices";
 import type { JobRowInput } from "@/lib/ingest/normalize-jobs";
-import type { ClientRowInput } from "@/lib/ingest/normalize-clients";
-import { WINDOW_DAYS } from "@/lib/config/limits";
 import { normalizeEstimateStatus } from "@/lib/ingest/statuses";
+import type { CSVEstimateRow } from "@/types/2ndlook";
+
+import { getJobberAccessToken } from "./oauth";
 
 const JOBBER_GQL_VERSION = process.env.JOBBER_GQL_VERSION ?? "2025-04-16";
 
 export interface JobberQuote {
   id: string;
   createdAt: string;
+  updatedAt?: string | null;
   quoteNumber?: string | null;
+  quoteStatus?: string | null;
+  amounts?: { subtotal?: number | null } | null;
+  client?: { id?: string | null; name?: string | null } | null;
+  sentAt?: string | null;
 }
 
 interface JobberInvoice {
@@ -86,9 +92,7 @@ async function jobberGraphQLRequest<T>({
   });
 
   const requestId =
-    response.headers.get("x-request-id") ||
-    response.headers.get("x-amzn-requestid") ||
-    response.headers.get("cf-ray");
+    response.headers.get("x-request-id") || response.headers.get("x-amzn-requestid") || response.headers.get("cf-ray");
   const text = await response.text();
   let json: { data?: T; errors?: unknown };
   try {
@@ -140,77 +144,90 @@ async function jobberGraphQLRequest<T>({
 
 /**
  * Fetch quotes (estimates) from Jobber GraphQL API
- * 
+ *
  * Returns data in CSVEstimateRow format for compatibility with shared normalization.
  * Field diet enforced: only id, dates, total, status
  * Filters: last 90 days, limit 100 records
  */
-export async function fetchEstimates(
-  installationId: string
-): Promise<CSVEstimateRow[]> {
+export async function fetchEstimates(installationId: string): Promise<CSVEstimateRow[]> {
   try {
     // Calculate window start
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - WINDOW_DAYS);
+    const iso = ninetyDaysAgo.toISOString();
 
-    // Only use DateTime! since Date! is not supported in this API version
-    const fetchQuotesWithFilter = async () => {
-      const query = `
-        query GetQuotes {
-          quotes(first: 100) {
-            edges {
-              node {
-                id
-                createdAt
-              }
+    // Use corrected Jobber GraphQL schema for version 2025-04-16
+    const query = `
+      query GetQuotes($after: ISO8601DateTime!) {
+        quotes(
+          filter: { createdAt: { after: $after } }
+          first: 100
+        ) {
+          nodes {
+            id
+            createdAt
+            updatedAt
+            quoteNumber
+            quoteStatus
+            sentAt
+            amounts {
+              subtotal
+            }
+            client {
+              id
+              name
             }
           }
         }
-      `;
+      }
+    `;
 
-      console.log("[JOBBER GRAPHQL] Fetching quotes from Jobber API...");
-      return jobberGraphQLRequest<{ quotes?: any }>({
-        installationId,
-        query,
-      });
-    };
+    const variables = { after: iso };
 
-    const result = await fetchQuotesWithFilter();
+    console.log(`[JOBBER GRAPHQL] Fetching quotes with version ${JOBBER_GQL_VERSION}...`);
+    const result = await jobberGraphQLRequest<{ quotes: { nodes: JobberQuote[] } }>({
+      installationId,
+      query,
+      variables,
+    });
 
-    // Try both edges.node and nodes structures
-    let quotes: JobberQuote[] = [];
-    if (result.quotes?.edges) {
-      console.log("[JOBBER RAW RESPONSE] Using edges.node structure");
-      quotes = result.quotes.edges.map((edge: any) => edge.node);
-    } else if (result.quotes?.nodes) {
-      console.log("[JOBBER RAW RESPONSE] Using nodes structure");
-      quotes = result.quotes.nodes;
-    } else {
-      console.log("[JOBBER RAW RESPONSE] No quotes found in response");
-    }
-    
+    const quotes = result.quotes.nodes || [];
+
     console.log("[JOBBER RAW RESPONSE] Total quotes found:", quotes.length);
     if (quotes.length > 0) {
       console.log("[JOBBER RAW RESPONSE] First quote sample:", JSON.stringify(quotes[0], null, 2));
     }
 
     // Map to CSVEstimateRow format
-    // Note: We're getting minimal data from Jobber API, will fill defaults
     const estimateRows: CSVEstimateRow[] = quotes
-      .filter(quote => {
-        // Filter to last 90 days client-side since we can't filter in the query
+      .filter((quote) => {
         const createdDate = new Date(quote.createdAt);
         return createdDate >= ninetyDaysAgo;
       })
-      .slice(0, 100) // Limit to 100
-      .map((quote) => ({
-        estimate_id: quote.id,
-        created_at: quote.createdAt,
-        closed_at: null, // Not available
-        amount: "0", // Not available - will show as $0
-        status: "sent", // Default status
-        job_type: undefined,
-      }));
+      .slice(0, 100)
+      .map((quote) => {
+        // Use amounts.subtotal instead of total.amount
+        const amountRaw = quote.amounts?.subtotal ?? 0;
+        const parsedAmount = typeof amountRaw === "string" ? parseFloat(amountRaw) : Number(amountRaw);
+        const normalizedAmount = Number.isFinite(parsedAmount) ? parsedAmount : 0;
+
+        // Use quoteStatus instead of status
+        const normalizedStatus = normalizeJobberStatus(quote.quoteStatus ?? "unknown");
+
+        // Use sentAt as a proxy for when quote became active
+        const closedAt = quote.sentAt || null;
+        const updatedAt = quote.updatedAt || closedAt || quote.createdAt;
+
+        return {
+          estimate_id: quote.id,
+          created_at: quote.createdAt,
+          updated_at: updatedAt || quote.createdAt,
+          closed_at: closedAt,
+          amount: normalizedAmount,
+          status: normalizedStatus,
+          job_type: undefined, // Not available in this schema version
+        };
+      });
 
     console.log("[JOBBER GRAPHQL] After filtering - estimateRows count:", estimateRows.length);
     if (estimateRows.length > 0) {
@@ -227,12 +244,17 @@ export async function fetchEstimates(
 }
 
 /**
+ * Normalize Jobber quote status to 2ndlook canonical status
+ */
+function normalizeJobberStatus(status: string): string {
+  return normalizeEstimateStatus(status);
+}
+
+/**
  * Fetch invoices from Jobber GraphQL API.
  * Returns rows ready for invoice normalization.
  */
-export async function fetchInvoices(
-  installationId: string
-): Promise<InvoiceRowInput[]> {
+export async function fetchInvoices(installationId: string): Promise<InvoiceRowInput[]> {
   const query = `
     query GetInvoices {
       invoices(first: 100) {
@@ -273,11 +295,7 @@ export async function fetchInvoices(
 
   const rows: InvoiceRowInput[] = invoices.map((invoice) => ({
     invoice_id: invoice.id,
-    invoice_date:
-      invoice.issuedDate ||
-      invoice.createdAt ||
-      invoice.dueDate ||
-      new Date().toISOString(),
+    invoice_date: invoice.issuedDate || invoice.createdAt || invoice.dueDate || new Date().toISOString(),
     invoice_total:
       invoice.amounts?.total?.amount !== undefined && invoice.amounts?.total?.amount !== null
         ? invoice.amounts.total.amount
@@ -292,9 +310,7 @@ export async function fetchInvoices(
 /**
  * Fetch jobs from Jobber GraphQL API.
  */
-export async function fetchJobs(
-  installationId: string
-): Promise<JobRowInput[]> {
+export async function fetchJobs(installationId: string): Promise<JobRowInput[]> {
   const query = `
     query GetJobs {
       jobs(first: 100) {
@@ -340,9 +356,7 @@ export async function fetchJobs(
 /**
  * Fetch clients from Jobber GraphQL API.
  */
-export async function fetchClients(
-  installationId: string
-): Promise<ClientRowInput[]> {
+export async function fetchClients(installationId: string): Promise<ClientRowInput[]> {
   const query = `
     query GetClients {
       clients(first: 100) {

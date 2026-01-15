@@ -3,7 +3,7 @@
  * Run with: npx ts-node --compiler-options '{"module":"CommonJS"}' src/lib/orchestrator/validate.ts
  */
 
-import { isOpenAIConfigured, getEnvironmentInfo } from "../config/environment";
+import { getEnvironmentInfo, isOpenAIConfigured } from "../config/environment";
 
 console.log("🔍 Validating Orchestrator Setup...\n");
 

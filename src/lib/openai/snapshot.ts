@@ -1,11 +1,8 @@
 import "server-only";
 
-import { createSnapshotResponse } from "@/lib/openai/client";
-import {
-  snapshotOutputSchema,
-  snapshotOutputJsonSchema,
-} from "@/lib/openai/schemas";
 import { getMinMeaningfulEstimates, WINDOW_DAYS } from "@/lib/config/limits";
+import { createSnapshotResponse } from "@/lib/openai/client";
+import { snapshotOutputJsonSchema, snapshotOutputSchema } from "@/lib/openai/schemas";
 import type { SnapshotOutput } from "@/types/2ndlook";
 
 export interface DecisionSnapshotInput {
@@ -14,10 +11,18 @@ export interface DecisionSnapshotInput {
   estimateSignals?: {
     countsByStatus: Record<string, number>;
     totals?: { estimates?: number };
+    priceDistribution?: { band: string; count: number }[];
+    weeklyVolume?: { week: string; count: number }[];
+    latencyDistribution?: { band: string; count: number }[];
+    jobTypeDistribution?: { job_type: string; count: number }[];
   };
   invoiceSignals?: {
     countsByStatus: Record<string, number>;
     totals?: { invoices?: number };
+    priceDistribution?: { band: string; count: number }[];
+    timeToInvoice?: { band: string; count: number }[];
+    weeklyVolume?: { week: string; count: number }[];
+    statusDistribution?: { status: string; count: number }[];
   };
 }
 
@@ -27,7 +32,7 @@ function isSnapshotEnabled(): boolean {
 
 function toStatusBreakdown(
   estimateSignals?: DecisionSnapshotInput["estimateSignals"],
-  invoiceSignals?: DecisionSnapshotInput["invoiceSignals"]
+  invoiceSignals?: DecisionSnapshotInput["invoiceSignals"],
 ): Record<string, number> | null {
   const breakdown: Record<string, number> = {};
 
@@ -84,16 +89,11 @@ function buildMockSnapshot(input: DecisionSnapshotInput): SnapshotOutput {
         why: "Set OPENAI_SNAPSHOT_ENABLED=true to turn on AI scoring.",
       },
     ],
-    disclaimers: [
-      "This is a low-confidence snapshot generated without the model.",
-    ],
+    disclaimers: ["This is a low-confidence snapshot generated without the model."],
   };
 }
 
-function buildInsufficientDataResult(
-  input: DecisionSnapshotInput,
-  requiredMinimum: number
-): SnapshotOutput {
+function buildInsufficientDataResult(input: DecisionSnapshotInput, requiredMinimum: number): SnapshotOutput {
   const estimateCount = input.estimateSignals?.totals?.estimates ?? null;
   const invoiceCount = input.invoiceSignals?.totals?.invoices ?? null;
 
@@ -144,12 +144,18 @@ function buildInstructions(): string {
     "- If signals are insufficient, return the InsufficientDataResult only.",
     "- Output MUST match the schema exactly.",
     "- Keep language Quiet Founder: calm, direct, no hype.",
+    "",
+    "Signals you receive (all bucketed, no PII):",
+    "- priceDistribution: volume of estimates by price band (<500, 500-1500, 1500-5000, 5000+).",
+    "- weeklyVolume: ISO week counts to identify trend/consistency.",
+    "- latencyDistribution: days from create to close; higher in 0-7d implies fast decisions.",
+    "- jobTypeDistribution: counts by job type (unknown if not provided).",
+    "- invoiceSignals (optional): price bands, time-to-invoice buckets, status distribution, weekly volume.",
+    "Use these to ground findings (demand, speed, mix) and scores. Do not invent metrics.",
   ].join("\n");
 }
 
-export async function generateDecisionSnapshot(
-  input: DecisionSnapshotInput
-): Promise<SnapshotOutput> {
+export async function generateDecisionSnapshot(input: DecisionSnapshotInput): Promise<SnapshotOutput> {
   if (!isSnapshotEnabled()) {
     return buildMockSnapshot(input);
   }

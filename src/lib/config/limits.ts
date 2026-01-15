@@ -11,7 +11,5 @@ export function allowSmallDatasets(): boolean {
 }
 
 export function getMinMeaningfulEstimates(): number {
-  return allowSmallDatasets()
-    ? MIN_MEANINGFUL_ESTIMATES_TEST
-    : MIN_MEANINGFUL_ESTIMATES_PROD;
+  return allowSmallDatasets() ? MIN_MEANINGFUL_ESTIMATES_TEST : MIN_MEANINGFUL_ESTIMATES_PROD;
 }

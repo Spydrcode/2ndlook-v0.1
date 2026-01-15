@@ -1,4 +1,5 @@
 import "server-only";
+
 import OpenAI from "openai";
 
 const MAX_RETRIES = 2;
@@ -32,9 +33,7 @@ async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function createSnapshotResponse<T>(
-  params: OpenAI.Responses.ResponseCreateParamsNonStreaming
-): Promise<T> {
+export async function createSnapshotResponse<T>(params: OpenAI.Responses.ResponseCreateParamsNonStreaming): Promise<T> {
   if (!isSnapshotEnabled()) {
     throw new OpenAISnapshotError("OpenAI snapshot generation is disabled", {
       code: "snapshot_disabled",
@@ -99,15 +98,13 @@ export async function createSnapshotResponse<T>(
         throw error;
       }
 
-      throw new OpenAISnapshotError(
-        error instanceof Error ? error.message : "Unknown OpenAI error",
-        { code: "unknown_error" }
-      );
+      throw new OpenAISnapshotError(error instanceof Error ? error.message : "Unknown OpenAI error", {
+        code: "unknown_error",
+      });
     }
   }
 
-  throw new OpenAISnapshotError(
-    lastError instanceof Error ? lastError.message : "OpenAI request failed",
-    { code: "retry_exhausted" }
-  );
+  throw new OpenAISnapshotError(lastError instanceof Error ? lastError.message : "OpenAI request failed", {
+    code: "retry_exhausted",
+  });
 }

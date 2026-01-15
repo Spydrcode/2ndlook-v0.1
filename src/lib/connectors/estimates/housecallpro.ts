@@ -4,8 +4,8 @@
  */
 
 import type { UniversalConnector } from "../connector";
-import type { EstimateCanonicalRow } from "../types";
 import { NotImplementedError } from "../connector";
+import type { EstimateCanonicalRow } from "../types";
 
 export class HousecallProConnector implements UniversalConnector {
   category = "estimates" as const;

@@ -1,5 +1,6 @@
 import "server-only";
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
@@ -33,11 +34,7 @@ export function encrypt(plaintext: string): string {
   const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
 
-  return [
-    iv.toString("base64"),
-    tag.toString("base64"),
-    ciphertext.toString("base64"),
-  ].join(":");
+  return [iv.toString("base64"), tag.toString("base64"), ciphertext.toString("base64")].join(":");
 }
 
 export function decrypt(ciphertext: string): string {

@@ -1,12 +1,7 @@
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getMinMeaningfulEstimates, WINDOW_DAYS } from "@/lib/config/limits";
 import { MEANINGFUL_ESTIMATE_STATUSES } from "@/lib/ingest/statuses";
-import type {
-  EstimateBucket,
-  ConfidenceLevel,
-  SnapshotResult,
-  SnapshotOutput,
-} from "@/types/2ndlook";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { ConfidenceLevel, EstimateBucket, SnapshotOutput, SnapshotResult } from "@/types/2ndlook";
 
 /**
  * Deterministic snapshot generation helper
@@ -21,16 +16,13 @@ export function getConfidenceLevel(count: number): ConfidenceLevel {
 }
 
 export function generateDeterministicSnapshot(
-  sourceId: string,
+  _sourceId: string,
   bucket: EstimateBucket,
   estimateCount: number,
-  confidenceLevel: ConfidenceLevel
+  confidenceLevel: ConfidenceLevel,
 ): SnapshotResult {
   const totalLatency =
-    bucket.latency_band_0_2 +
-    bucket.latency_band_3_7 +
-    bucket.latency_band_8_21 +
-    bucket.latency_band_22_plus;
+    bucket.latency_band_0_2 + bucket.latency_band_3_7 + bucket.latency_band_8_21 + bucket.latency_band_22_plus;
   const fastLatency = bucket.latency_band_0_2 + bucket.latency_band_3_7;
   return {
     kind: "snapshot",
@@ -46,15 +38,13 @@ export function generateDeterministicSnapshot(
     scores: {
       demand_signal: Math.min(100, Math.round((estimateCount / 60) * 100)),
       cash_signal: 0,
-      decision_latency:
-        totalLatency === 0 ? 0 : Math.round((fastLatency / totalLatency) * 100),
+      decision_latency: totalLatency === 0 ? 0 : Math.round((fastLatency / totalLatency) * 100),
       capacity_pressure: Math.min(
         100,
         Math.round(
-          (bucket.weekly_volume.slice(-4).reduce((sum, item) => sum + item.count, 0) /
-            Math.max(estimateCount, 1)) *
-            100
-        )
+          (bucket.weekly_volume.slice(-4).reduce((sum, item) => sum + item.count, 0) / Math.max(estimateCount, 1)) *
+            100,
+        ),
       ),
       confidence: confidenceLevel,
     },
@@ -74,10 +64,7 @@ export function generateDeterministicSnapshot(
   };
 }
 
-function buildInsufficientDataSnapshot(
-  estimateCount: number,
-  requiredMinimum: number
-): SnapshotOutput {
+function buildInsufficientDataSnapshot(estimateCount: number, requiredMinimum: number): SnapshotOutput {
   return {
     kind: "insufficient_data",
     window_days: WINDOW_DAYS,
@@ -159,12 +146,7 @@ export async function runDeterministicSnapshot(params: {
   const snapshotResult =
     estimateCount < requiredMinimum
       ? buildInsufficientDataSnapshot(estimateCount, requiredMinimum)
-      : generateDeterministicSnapshot(
-          source_id,
-          bucket as EstimateBucket,
-          estimateCount,
-          confidenceLevel
-        );
+      : generateDeterministicSnapshot(source_id, bucket as EstimateBucket, estimateCount, confidenceLevel);
 
   // Store snapshot
   const { data: snapshot, error: snapshotError } = await supabase
@@ -172,10 +154,7 @@ export async function runDeterministicSnapshot(params: {
     .insert({
       source_id,
       estimate_count: estimateCount,
-      confidence_level:
-        snapshotResult.kind === "snapshot"
-          ? snapshotResult.scores.confidence
-          : "low",
+      confidence_level: snapshotResult.kind === "snapshot" ? snapshotResult.scores.confidence : "low",
       result: snapshotResult,
     })
     .select("id")
@@ -189,10 +168,7 @@ export async function runDeterministicSnapshot(params: {
   await supabase
     .from("sources")
     .update({
-      status:
-        snapshotResult.kind === "snapshot"
-          ? "snapshot_generated"
-          : "insufficient_data",
+      status: snapshotResult.kind === "snapshot" ? "snapshot_generated" : "insufficient_data",
     })
     .eq("id", source_id);
 
@@ -200,5 +176,3 @@ export async function runDeterministicSnapshot(params: {
     snapshot_id: snapshot.id,
   };
 }
-
-

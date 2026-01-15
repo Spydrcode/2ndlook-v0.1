@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { X, Sparkles } from "lucide-react";
 
+import { Sparkles, X } from "lucide-react";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { listConnectors } from "@/lib/connectors";
 import { WINDOW_DAYS } from "@/lib/config/limits";
+import { listConnectors } from "@/lib/connectors";
 
 const connectorDescriptions: Record<string, string> = {
   stripe: "Invoices and payments from Stripe",
@@ -22,25 +24,9 @@ const connectorDescriptions: Record<string, string> = {
   "housecall-pro": "Estimates from Housecall Pro",
 };
 
-const connectorPriority = [
-  "jobber",
-  "housecall-pro",
-  "stripe",
-  "square",
-  "quickbooks",
-  "wave",
-  "zoho-invoice",
-];
+const connectorPriority = ["jobber", "housecall-pro", "stripe", "square", "quickbooks", "wave", "zoho-invoice"];
 
-const oauthTools = [
-  "jobber",
-  "housecall-pro",
-  "quickbooks",
-  "square",
-  "stripe",
-  "wave",
-  "zoho-invoice",
-];
+const oauthTools = ["jobber", "housecall-pro", "quickbooks", "square", "stripe", "wave", "zoho-invoice"];
 
 type ConnectionStatus = "connected" | "reconnect_required";
 
@@ -60,12 +46,12 @@ export default function ConnectPage() {
   useEffect(() => {
     const errorParam = searchParams.get("error");
     const successParam = searchParams.get("success");
-    
+
     if (errorParam) {
       setError(errorParam);
       setIsConnecting(false); // Connection failed
     }
-    
+
     if (successParam === "true") {
       setIsConnecting(false); // Connection succeeded
     }
@@ -153,13 +139,13 @@ export default function ConnectPage() {
         if (!response.ok) return;
         const data = await response.json();
         if (!isMounted) return;
-        
+
         // Update connection state based on status
         if (data.connected) {
-          setConnectionStates(prev => ({ ...prev, jobber: "connected" }));
+          setConnectionStates((prev) => ({ ...prev, jobber: "connected" }));
           setIsConnecting(false);
         } else if (data.status === "token_expired") {
-          setConnectionStates(prev => ({ ...prev, jobber: "reconnect_required" }));
+          setConnectionStates((prev) => ({ ...prev, jobber: "reconnect_required" }));
         }
       } catch {
         // Silent failure
@@ -186,9 +172,7 @@ export default function ConnectPage() {
     };
 
     return registry
-      .filter(
-        (connector) => connector.isImplemented && oauthTools.includes(connector.tool)
-      )
+      .filter((connector) => connector.isImplemented && oauthTools.includes(connector.tool))
       .slice()
       .sort((a, b) => rank(a.tool) - rank(b.tool));
   }, []);
@@ -204,7 +188,8 @@ export default function ConnectPage() {
       oauth_exchange_failed: "Failed to complete OAuth exchange. Please try again.",
       oauth_scope_insufficient: "Your account does not have the required access. Please check scopes and try again.",
       oauth_provider_misconfigured: "OAuth configuration is missing. Please contact support.",
-      oauth_config_missing: "Jobber OAuth is not configured. Please contact your administrator to set up JOBBER_CLIENT_ID and JOBBER_REDIRECT_URI.",
+      oauth_config_missing:
+        "Jobber OAuth is not configured. Please contact your administrator to set up JOBBER_CLIENT_ID and JOBBER_REDIRECT_URI.",
       oauth_start_failed: "Failed to start OAuth flow. Please try again.",
       jobber_state_mismatch: "Security validation failed. Please try connecting again.",
       jobber_missing_code: "Authorization code was not received from Jobber. Please try again.",
@@ -239,10 +224,10 @@ export default function ConnectPage() {
       const response = await fetch(`/api/oauth/${provider}/disconnect`, {
         method: "POST",
       });
-      
+
       if (response.ok) {
         // Update UI state
-        setConnectionStates(prev => {
+        setConnectionStates((prev) => {
           const newState = { ...prev };
           delete newState[provider];
           return newState;
@@ -262,16 +247,14 @@ export default function ConnectPage() {
   return (
     <div className="flex flex-1 flex-col gap-8 p-6">
       <div className="space-y-2">
-        <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="inline-flex items-center gap-2 text-muted-foreground text-sm">
           <Sparkles className="h-4 w-4" />
           <span>One place to connect what you already use.</span>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Connect your tools</h1>
-        <p className="text-muted-foreground">
-          Connect what you already use to generate a decision snapshot.
-        </p>
-        <p className="text-sm text-muted-foreground">Signal-only. No customer details. No line items.</p>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="font-semibold text-2xl tracking-tight">Connect your tools</h1>
+        <p className="text-muted-foreground">Connect what you already use to generate a decision snapshot.</p>
+        <p className="text-muted-foreground text-sm">Signal-only. No customer details. No line items.</p>
+        <p className="text-muted-foreground text-sm">
           Need HoneyBook or ServiceTitan?{" "}
           <Link href="/dashboard/supported" className="underline underline-offset-2">
             Supported after onboarding
@@ -300,7 +283,7 @@ export default function ConnectPage() {
           <div className="flex items-center justify-between gap-2">
             <div className="space-y-1 text-sm">
               <p className="font-medium">Debug Details</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 Use this to look up the exact failure (event id + request details).
               </p>
             </div>
@@ -358,15 +341,13 @@ export default function ConnectPage() {
                 <CardDescription>
                   {description}
                   {needsReconnect && (
-                    <span className="block text-xs text-muted-foreground">
-                      Your connection needs to be refreshed.
-                    </span>
+                    <span className="block text-muted-foreground text-xs">Your connection needs to be refreshed.</span>
                   )}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {connector.tool === "jobber" && (
-                  <div className="mb-3 space-y-1 text-xs text-muted-foreground">
+                  <div className="mb-3 space-y-1 text-muted-foreground text-xs">
                     <div>
                       Last sync:{" "}
                       {jobberEvents?.last_sync_status
@@ -375,9 +356,7 @@ export default function ConnectPage() {
                           : "Fail"
                         : "Never"}
                     </div>
-                    <div>
-                      Last error: {jobberEvents?.last_error_message || "None"}
-                    </div>
+                    <div>Last error: {jobberEvents?.last_error_message || "None"}</div>
                     <div className="flex items-center justify-between gap-2">
                       <span>Event ID: {eventIdFromUrl || jobberEvents?.last_event_id || "N/A"}</span>
                       <Button
@@ -402,30 +381,20 @@ export default function ConnectPage() {
                       <Button asChild variant="outline" className="flex-1">
                         <a href={reconnectHref}>Reconnect</a>
                       </Button>
-                      <Button 
-                        variant="outline" 
-                        className="flex-1"
-                        onClick={() => handleDisconnect(connector.tool)}
-                      >
+                      <Button variant="outline" className="flex-1" onClick={() => handleDisconnect(connector.tool)}>
                         Disconnect
                       </Button>
                     </div>
                   </div>
                 ) : needsReconnect ? (
                   <Button asChild className="w-full">
-                    <a 
-                      href={reconnectHref}
-                      onClick={() => setIsConnecting(true)}
-                    >
+                    <a href={reconnectHref} onClick={() => setIsConnecting(true)}>
                       Reconnect {connector.getDisplayName()}
                     </a>
                   </Button>
                 ) : (
                   <Button asChild className="w-full">
-                    <a 
-                      href={connectHref}
-                      onClick={() => setIsConnecting(true)}
-                    >
+                    <a href={connectHref} onClick={() => setIsConnecting(true)}>
                       Connect {connector.getDisplayName()}
                     </a>
                   </Button>

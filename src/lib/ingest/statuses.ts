@@ -69,8 +69,4 @@ export function normalizeInvoiceStatus(input?: string | null): InvoiceStatus {
   return INVOICE_STATUS_ALIASES[normalized] ?? "unknown";
 }
 
-export const MEANINGFUL_ESTIMATE_STATUSES: EstimateStatus[] = [
-  "sent",
-  "accepted",
-  "converted",
-];
+export const MEANINGFUL_ESTIMATE_STATUSES: EstimateStatus[] = ["sent", "accepted", "converted"];

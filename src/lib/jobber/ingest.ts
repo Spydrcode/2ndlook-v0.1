@@ -3,14 +3,15 @@
  * Fetches estimates from Jobber OAuth connection and creates source.
  */
 
-import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchClients, fetchEstimates, fetchInvoices, fetchJobs } from "./graphql";
+import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
+import { normalizeClientsAndStore } from "@/lib/ingest/normalize-clients";
 import { normalizeAndStore } from "@/lib/ingest/normalize-estimates";
 import { normalizeInvoicesAndStore } from "@/lib/ingest/normalize-invoices";
 import { normalizeJobsAndStore } from "@/lib/ingest/normalize-jobs";
-import { normalizeClientsAndStore } from "@/lib/ingest/normalize-clients";
-import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
 import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+import { fetchClients, fetchEstimates, fetchInvoices, fetchJobs } from "./graphql";
 
 export interface IngestJobberResult {
   success: boolean;
@@ -28,19 +29,16 @@ export interface IngestJobberResult {
 
 /**
  * Ingest Jobber estimates for an installation.
- * 
+ *
  * Steps:
  * 1. Create source with status='pending'
  * 2. Fetch estimates from Jobber
  * 3. Normalize and store (enforces 90 days, max 100)
  * 4. Update source status to 'ingested' and store metadata
- * 
+ *
  * Returns source_id on success or error message on failure.
  */
-export async function ingestJobberEstimates(
-  installationId: string,
-  eventId?: string
-): Promise<IngestJobberResult> {
+export async function ingestJobberEstimates(installationId: string, eventId?: string): Promise<IngestJobberResult> {
   try {
     const supabase = createAdminClient();
 
@@ -71,7 +69,7 @@ export async function ingestJobberEstimates(
       console.log("[JOBBER INGEST] Fetching estimates from Jobber for installation:", installationId);
       const estimateRows = await fetchEstimates(installationId);
       console.log(`[JOBBER INGEST] Fetched ${estimateRows.length} estimates from Jobber`);
-      
+
       if (estimateRows.length === 0) {
         console.log("[JOBBER INGEST] WARNING: Zero estimates returned from Jobber API");
         console.log("[JOBBER INGEST] This usually means:");
@@ -84,11 +82,7 @@ export async function ingestJobberEstimates(
 
       // Normalize and store (applies 90 day cutoff and max 100)
       console.log("[JOBBER INGEST] Normalizing and storing estimates...");
-      const { kept, rejected, meaningful } = await normalizeAndStore(
-        supabase,
-        sourceId,
-        estimateRows
-      );
+      const { kept, rejected, meaningful } = await normalizeAndStore(supabase, sourceId, estimateRows);
 
       console.log(`[JOBBER INGEST] Normalization complete: ${kept} kept, ${rejected} rejected`);
 
@@ -103,12 +97,12 @@ export async function ingestJobberEstimates(
         keptInvoices = result.kept;
         rejectedInvoices = result.rejected;
         console.log(
-          `[JOBBER INGEST] Invoice normalization complete: ${keptInvoices} kept, ${rejectedInvoices} rejected`
+          `[JOBBER INGEST] Invoice normalization complete: ${keptInvoices} kept, ${rejectedInvoices} rejected`,
         );
       } catch (invoiceError) {
         console.error(
           "[JOBBER INGEST] Invoice ingest skipped (non-fatal):",
-          invoiceError instanceof Error ? invoiceError.message : invoiceError
+          invoiceError instanceof Error ? invoiceError.message : invoiceError,
         );
       }
 
@@ -122,13 +116,11 @@ export async function ingestJobberEstimates(
         const result = await normalizeJobsAndStore(supabase, sourceId, jobRows);
         keptJobs = result.kept;
         rejectedJobs = result.rejected;
-        console.log(
-          `[JOBBER INGEST] Job normalization complete: ${keptJobs} kept, ${rejectedJobs} rejected`
-        );
+        console.log(`[JOBBER INGEST] Job normalization complete: ${keptJobs} kept, ${rejectedJobs} rejected`);
       } catch (jobError) {
         console.error(
           "[JOBBER INGEST] Job ingest skipped (non-fatal):",
-          jobError instanceof Error ? jobError.message : jobError
+          jobError instanceof Error ? jobError.message : jobError,
         );
       }
 
@@ -142,13 +134,11 @@ export async function ingestJobberEstimates(
         const result = await normalizeClientsAndStore(supabase, sourceId, clientRows);
         keptClients = result.kept;
         rejectedClients = result.rejected;
-        console.log(
-          `[JOBBER INGEST] Client normalization complete: ${keptClients} kept, ${rejectedClients} rejected`
-        );
+        console.log(`[JOBBER INGEST] Client normalization complete: ${keptClients} kept, ${rejectedClients} rejected`);
       } catch (clientError) {
         console.error(
           "[JOBBER INGEST] Client ingest skipped (non-fatal):",
-          clientError instanceof Error ? clientError.message : clientError
+          clientError instanceof Error ? clientError.message : clientError,
         );
       }
 
@@ -207,10 +197,7 @@ export async function ingestJobberEstimates(
     } catch (fetchError) {
       // Rollback: delete source on fetch/normalize failure
       console.error("Ingestion failed:", fetchError);
-      await supabase
-        .from("sources")
-        .delete()
-        .eq("id", sourceId);
+      await supabase.from("sources").delete().eq("id", sourceId);
 
       const err = fetchError as any;
       const errorDetails = {
@@ -254,9 +241,7 @@ export async function ingestJobberEstimates(
       statusText: (err as any)?.statusText,
       requestId: (err as any)?.requestId,
       graphqlErrors: (err as any)?.graphqlErrors,
-      responseText: (err as any)?.responseText
-        ? String((err as any).responseText).slice(0, 2000)
-        : undefined,
+      responseText: (err as any)?.responseText ? String((err as any).responseText).slice(0, 2000) : undefined,
     };
     if (eventId) {
       try {
@@ -276,5 +261,3 @@ export async function ingestJobberEstimates(
     };
   }
 }
-
-

@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Upload, FileSpreadsheet, ChevronRight, X, Loader2, AlertCircle, ArrowLeft } from "lucide-react";
+import { useCallback, useState } from "react";
 
+import { useRouter, useSearchParams } from "next/navigation";
+
+import { AlertCircle, ArrowLeft, ChevronRight, FileSpreadsheet, Loader2, Upload, X } from "lucide-react";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Supported estimate tools for v0.1 ingestion
 const SUPPORTED_ESTIMATE_TOOLS = ["jobber", "housecall-pro", "file"] as const;
 
-type SupportedEstimateTool = typeof SUPPORTED_ESTIMATE_TOOLS[number];
+type SupportedEstimateTool = (typeof SUPPORTED_ESTIMATE_TOOLS)[number];
 
 const TOOL_LABELS: Record<string, string> = {
   jobber: "Jobber",
@@ -20,12 +22,10 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 const TOOL_DESCRIPTIONS: Record<string, string> = {
-  jobber:
-    "One-time import of recent estimates. This creates a snapshot without maintaining a long-term connection.",
+  jobber: "One-time import of recent estimates. This creates a snapshot without maintaining a long-term connection.",
   "housecall-pro":
     "One-time import of recent estimates. This creates a snapshot without maintaining a long-term connection.",
-  file:
-    "One-time import of recent estimates. This creates a snapshot without maintaining a long-term connection.",
+  file: "One-time import of recent estimates. This creates a snapshot without maintaining a long-term connection.",
 };
 
 function isSupportedEstimateTool(tool: string | null): tool is SupportedEstimateTool {
@@ -35,10 +35,10 @@ function isSupportedEstimateTool(tool: string | null): tool is SupportedEstimate
 export default function ImportPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   const category = searchParams.get("category");
   const tool = searchParams.get("tool");
-  
+
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -53,8 +53,8 @@ export default function ImportPage() {
   const isEstimatesFlow = category === "estimates" && isSupportedEstimateTool(tool);
   const showComingSoon = !isEstimatesFlow;
 
-  const toolLabel = tool ? (TOOL_LABELS[tool] || "Unknown") : "Unknown";
-  const toolDescription = tool ? (TOOL_DESCRIPTIONS[tool] || "") : "";
+  const toolLabel = tool ? TOOL_LABELS[tool] || "Unknown" : "Unknown";
+  const toolDescription = tool ? TOOL_DESCRIPTIONS[tool] || "" : "";
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -149,30 +149,23 @@ export default function ImportPage() {
     return (
       <div className="flex flex-1 flex-col gap-6 p-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Connector coming soon</h1>
+          <h1 className="font-semibold text-2xl tracking-tight">Connector coming soon</h1>
           <p className="text-muted-foreground">
             Estimates are enough to generate a snapshot. For now, you can use a one-time import.
           </p>
         </div>
 
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
-            <div className="text-center space-y-2">
-              <p className="text-muted-foreground">
-                This connector will be available in a future release.
-              </p>
+          <CardContent className="flex flex-col items-center justify-center gap-4 py-12">
+            <div className="space-y-2 text-center">
+              <p className="text-muted-foreground">This connector will be available in a future release.</p>
             </div>
             <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={() => router.push("/dashboard/connect")}
-              >
+              <Button variant="outline" onClick={() => router.push("/dashboard/connect")}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Connect
               </Button>
-              <Button
-                onClick={() => router.push("/dashboard/import?category=estimates&tool=file")}
-              >
+              <Button onClick={() => router.push("/dashboard/import?category=estimates&tool=file")}>
                 Use one-time import
               </Button>
             </div>
@@ -186,9 +179,7 @@ export default function ImportPage() {
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Import from {toolLabel}
-        </h1>
+        <h1 className="font-semibold text-2xl tracking-tight">Import from {toolLabel}</h1>
         <p className="text-muted-foreground">{toolDescription}</p>
       </div>
 
@@ -196,7 +187,7 @@ export default function ImportPage() {
         <CardHeader>
           <CardTitle>Upload export file</CardTitle>
           <CardDescription>Recent estimates only</CardDescription>
-          <p className="text-sm text-muted-foreground pt-2">
+          <p className="pt-2 text-muted-foreground text-sm">
             We normalize estimate status (sent/accepted/converted) and ignore customer or line-item details.
           </p>
         </CardHeader>
@@ -205,9 +196,7 @@ export default function ImportPage() {
             type="button"
             aria-label="Upload file by clicking or dragging and dropping"
             className={`relative flex min-h-50 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed transition-colors ${
-              isDragging
-                ? "border-primary bg-primary/5"
-                : "border-muted-foreground/25 hover:border-primary"
+              isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary"
             }`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -220,21 +209,13 @@ export default function ImportPage() {
               }
             }}
           >
-            <input
-              id="file-input"
-              type="file"
-              className="hidden"
-              onChange={handleFileChange}
-              disabled={isUploading}
-            />
+            <input id="file-input" type="file" className="hidden" onChange={handleFileChange} disabled={isUploading} />
             {file ? (
               <div className="flex items-center gap-3">
                 <FileSpreadsheet className="h-10 w-10 text-primary" />
                 <div>
                   <p className="font-medium">{file.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {(file.size / 1024).toFixed(1)} KB
-                  </p>
+                  <p className="text-muted-foreground text-sm">{(file.size / 1024).toFixed(1)} KB</p>
                 </div>
                 {!isUploading && (
                   <Button
@@ -253,9 +234,7 @@ export default function ImportPage() {
             ) : (
               <>
                 <Upload className="h-10 w-10 text-muted-foreground" />
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Drop your export file here or click to browse
-                </p>
+                <p className="mt-2 text-muted-foreground text-sm">Drop your export file here or click to browse</p>
               </>
             )}
           </button>
@@ -272,15 +251,9 @@ export default function ImportPage() {
               <AlertDescription>
                 <div className="space-y-1">
                   <p className="font-medium">Import complete</p>
-                  <p className="text-sm">
-                    Rows received: {result.received}
-                  </p>
-                  <p className="text-sm">
-                    Estimates included: {result.kept}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Rows not included: {result.rejected}
-                  </p>
+                  <p className="text-sm">Rows received: {result.received}</p>
+                  <p className="text-sm">Estimates included: {result.kept}</p>
+                  <p className="text-muted-foreground text-sm">Rows not included: {result.rejected}</p>
                 </div>
               </AlertDescription>
             </Alert>

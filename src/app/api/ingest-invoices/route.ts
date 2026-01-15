@@ -1,8 +1,9 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+
+import { type InvoiceRowInput, normalizeInvoicesAndStore } from "@/lib/ingest/normalize-invoices";
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
-import { normalizeInvoicesAndStore, type InvoiceRowInput } from "@/lib/ingest/normalize-invoices";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 interface InvoiceIngestResponse {
   received: number;
@@ -21,10 +22,7 @@ export async function POST(request: NextRequest) {
     const source_id = formData.get("source_id") as string | null;
 
     if (!file || !source_id) {
-      return NextResponse.json(
-        { error: "file and source_id are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "file and source_id are required" }, { status: 400 });
     }
 
     // Verify source ownership
@@ -43,10 +41,7 @@ export async function POST(request: NextRequest) {
     const lines = text.split("\n").filter((line) => line.trim().length > 0);
 
     if (lines.length < 2) {
-      return NextResponse.json(
-        { error: "File must contain header and at least one data row" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "File must contain header and at least one data row" }, { status: 400 });
     }
 
     const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
@@ -54,10 +49,7 @@ export async function POST(request: NextRequest) {
 
     for (const required of requiredHeaders) {
       if (!headers.includes(required)) {
-        return NextResponse.json(
-          { error: `Missing required header: ${required}` },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: `Missing required header: ${required}` }, { status: 400 });
       }
     }
 
@@ -79,10 +71,7 @@ export async function POST(request: NextRequest) {
           invoice_status: row.invoice_status,
           linked_estimate_id: row.linked_estimate_id || null,
         });
-      } catch {
-        // Skip malformed rows; normalization will track rejection counts
-        continue;
-      }
+      } catch {}
     }
 
     const { kept, rejected } = await normalizeInvoicesAndStore(supabase, source_id, invoices);
@@ -97,9 +86,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("Invoice ingest error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

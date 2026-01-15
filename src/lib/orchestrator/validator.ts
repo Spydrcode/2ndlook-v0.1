@@ -1,5 +1,5 @@
-import type { SnapshotOutput } from "@/types/2ndlook";
 import { snapshotOutputSchema } from "@/lib/openai/schemas";
+import type { SnapshotOutput } from "@/types/2ndlook";
 
 /**
  * Runtime validator for snapshot outputs
@@ -7,9 +7,7 @@ import { snapshotOutputSchema } from "@/lib/openai/schemas";
  *
  * Server-only module - used in orchestrator
  */
-export function validateSnapshotResult(
-  data: unknown
-): asserts data is SnapshotOutput {
+export function validateSnapshotResult(data: unknown): asserts data is SnapshotOutput {
   snapshotOutputSchema.parse(data);
 }
 

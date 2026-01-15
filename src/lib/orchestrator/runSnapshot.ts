@@ -1,13 +1,10 @@
-import { createAdminClient } from "@/lib/supabase/admin";
-import { generateDecisionSnapshot } from "@/lib/openai/snapshot";
-import { createMCPClient } from "@/lib/mcp/client";
 import { WINDOW_DAYS } from "@/lib/config/limits";
-import {
-  buildDeterministicSnapshot,
-  validateBucketedAggregates,
-} from "@/lib/orchestrator/deterministicSnapshot";
+import { createMCPClient } from "@/lib/mcp/client";
+import { generateDecisionSnapshot } from "@/lib/openai/snapshot";
+import { buildDeterministicSnapshot, validateBucketedAggregates } from "@/lib/orchestrator/deterministicSnapshot";
 import { validateSnapshotResult } from "@/lib/orchestrator/validator";
-import type { SnapshotOutput, ConfidenceLevel } from "@/types/2ndlook";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { ConfidenceLevel, SnapshotOutput } from "@/types/2ndlook";
 
 /**
  * Orchestrator for 2ndlook v0.1 snapshot pipeline
@@ -48,9 +45,7 @@ export interface RunSnapshotResult {
  * @returns snapshot_id of the generated snapshot
  * @throws Error if both orchestrated and deterministic fail
  */
-export async function runSnapshotOrchestrator(
-  params: RunSnapshotParams
-): Promise<RunSnapshotResult> {
+export async function runSnapshotOrchestrator(params: RunSnapshotParams): Promise<RunSnapshotResult> {
   const { source_id, installation_id } = params;
 
   const supabase = createAdminClient();
@@ -69,9 +64,7 @@ export async function runSnapshotOrchestrator(
     .single();
 
   if (snapshotError || !snapshot) {
-    throw new Error(
-      `Failed to create snapshot record: ${snapshotError?.message || "unknown"}`
-    );
+    throw new Error(`Failed to create snapshot record: ${snapshotError?.message || "unknown"}`);
   }
 
   const snapshot_id = snapshot.id;
@@ -90,12 +83,7 @@ export async function runSnapshotOrchestrator(
 
     // Step 3: Prepare safe agent input (aggregates only)
     const invoiceStatusCounts = aggregates.invoiceSignals
-      ? Object.fromEntries(
-          aggregates.invoiceSignals.status_distribution.map((item) => [
-            item.status,
-            item.count,
-          ])
-        )
+      ? Object.fromEntries(aggregates.invoiceSignals.status_distribution.map((item) => [item.status, item.count]))
       : undefined;
 
     const agentInput = {
@@ -104,11 +92,19 @@ export async function runSnapshotOrchestrator(
       estimateSignals: {
         countsByStatus: {},
         totals: { estimates: aggregates.estimate_count },
+        priceDistribution: aggregates.price_distribution,
+        weeklyVolume: aggregates.weekly_volume,
+        latencyDistribution: aggregates.latency_distribution,
+        jobTypeDistribution: aggregates.job_type_distribution ?? [],
       },
       invoiceSignals: aggregates.invoiceSignals
         ? {
             countsByStatus: invoiceStatusCounts ?? {},
             totals: { invoices: aggregates.invoiceSignals.invoice_count },
+            priceDistribution: aggregates.invoiceSignals.price_distribution,
+            timeToInvoice: aggregates.invoiceSignals.time_to_invoice,
+            weeklyVolume: aggregates.invoiceSignals.weekly_volume,
+            statusDistribution: aggregates.invoiceSignals.status_distribution,
           }
         : undefined,
     };
@@ -133,19 +129,12 @@ export async function runSnapshotOrchestrator(
       });
     } catch (llmError) {
       // Fallback to deterministic if LLM fails
-      console.warn(
-        "[Orchestrator] LLM generation failed, using deterministic fallback:",
-        {
-          snapshot_id,
-          error: llmError instanceof Error ? llmError.name : "Unknown",
-        }
-      );
+      console.warn("[Orchestrator] LLM generation failed, using deterministic fallback:", {
+        snapshot_id,
+        error: llmError instanceof Error ? llmError.name : "Unknown",
+      });
 
-      snapshotResult = buildDeterministicSnapshot(
-        aggregates,
-        source_id,
-        snapshot_id
-      );
+      snapshotResult = buildDeterministicSnapshot(aggregates, source_id, snapshot_id);
     }
 
     // Step 5: Write result via MCP
@@ -161,12 +150,10 @@ export async function runSnapshotOrchestrator(
 
     const estimateCount =
       snapshotResult.kind === "snapshot"
-        ? snapshotResult.signals.totals.estimates ?? 0
-        : snapshotResult.found.estimates ?? 0;
+        ? (snapshotResult.signals.totals.estimates ?? 0)
+        : (snapshotResult.found.estimates ?? 0);
     const confidenceLevel: ConfidenceLevel =
-      snapshotResult.kind === "snapshot"
-        ? snapshotResult.scores.confidence
-        : "low";
+      snapshotResult.kind === "snapshot" ? snapshotResult.scores.confidence : "low";
 
     // Step 6: Update snapshot record with metadata
     await supabase
@@ -181,10 +168,7 @@ export async function runSnapshotOrchestrator(
     await supabase
       .from("sources")
       .update({
-        status:
-          snapshotResult.kind === "snapshot"
-            ? "snapshot_generated"
-            : "insufficient_data",
+        status: snapshotResult.kind === "snapshot" ? "snapshot_generated" : "insufficient_data",
       })
       .eq("id", source_id);
 
@@ -209,10 +193,6 @@ export async function runSnapshotOrchestrator(
     // Clean up failed snapshot record
     await supabase.from("snapshots").delete().eq("id", snapshot_id);
 
-    throw new Error(
-      `Snapshot generation failed: ${error instanceof Error ? error.message : "Unknown error"}`
-    );
+    throw new Error(`Snapshot generation failed: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
 }
-
-

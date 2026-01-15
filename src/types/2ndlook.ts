@@ -1,18 +1,8 @@
 // 2ndlook v0.1 TypeScript Types (LOCKED)
 
-export type SourceType =
-  | "csv"
-  | "salesforce"
-  | "hubspot"
-  | "jobber"
-  | "invoice";
+export type SourceType = "csv" | "salesforce" | "hubspot" | "jobber" | "invoice";
 
-export type SourceStatus =
-  | "pending"
-  | "ingested"
-  | "bucketed"
-  | "snapshot_generated"
-  | "insufficient_data";
+export type SourceStatus = "pending" | "ingested" | "bucketed" | "snapshot_generated" | "insufficient_data";
 
 export type EstimateStatus =
   | "draft"
@@ -35,13 +25,7 @@ export type InvoiceStatus =
   | "partial"
   | "unknown";
 
-export type JobStatus =
-  | "active"
-  | "archived"
-  | "converted"
-  | "completed"
-  | "cancelled"
-  | "unknown";
+export type JobStatus = "active" | "archived" | "converted" | "completed" | "cancelled" | "unknown";
 
 export type ConfidenceLevel = "low" | "medium" | "high";
 
@@ -119,6 +103,7 @@ export interface EstimateBucket {
   latency_band_8_21: number;
   latency_band_22_plus: number;
   weekly_volume: { week: string; count: number }[];
+  job_type_distribution?: { job_type: string; count: number }[];
   created_at: string;
 }
 
@@ -131,8 +116,8 @@ export interface InvoiceBucket {
   price_band_1500_5000: number;
   price_band_5000_plus: number;
   // Time from estimate to invoice (for linked invoices only)
-  time_to_invoice_0_7: number;   // 0-7 days
-  time_to_invoice_8_14: number;  // 8-14 days
+  time_to_invoice_0_7: number; // 0-7 days
+  time_to_invoice_8_14: number; // 8-14 days
   time_to_invoice_15_30: number; // 15-30 days
   time_to_invoice_31_plus: number; // 31+ days
   // Status distribution

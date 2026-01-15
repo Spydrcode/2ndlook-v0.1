@@ -1,9 +1,9 @@
 /**
  * Generate demo estimate data for testing
  * Output: .demo/estimates-demo.csv
- * 
+ *
  * Usage: npm run demo:generate
- * 
+ *
  * Generates 60-80 closed estimates with:
  * - Deterministic randomness (seeded RNG)
  * - All price bands covered
@@ -11,8 +11,8 @@
  * - No customer or line-item details
  */
 
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // Seeded random number generator for reproducibility
 class SeededRandom {
@@ -43,10 +43,10 @@ class SeededRandom {
 
 // Price bands to ensure coverage
 const PRICE_BANDS = [
-  { min: 200, max: 450, weight: 0.3 },      // <500
-  { min: 500, max: 1500, weight: 0.35 },   // 500-1500
-  { min: 1500, max: 5000, weight: 0.25 },  // 1500-5000
-  { min: 5000, max: 12000, weight: 0.1 },  // 5000+
+  { min: 200, max: 450, weight: 0.3 }, // <500
+  { min: 500, max: 1500, weight: 0.35 }, // 500-1500
+  { min: 1500, max: 5000, weight: 0.25 }, // 1500-5000
+  { min: 5000, max: 12000, weight: 0.1 }, // 5000+
 ];
 
 // Job types (optional field)
@@ -75,15 +75,13 @@ interface EstimateRow {
 function generateDemoEstimates(count: number, seed = 42): EstimateRow[] {
   const rng = new SeededRandom(seed);
   const estimates: EstimateRow[] = [];
-  
+
   const now = new Date();
   const ninetyDaysAgo = new Date(now);
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
   // Ensure all price bands are represented
-  const bandCounts = PRICE_BANDS.map(band => 
-    Math.max(5, Math.floor(count * band.weight))
-  );
+  const bandCounts = PRICE_BANDS.map((band) => Math.max(5, Math.floor(count * band.weight)));
 
   let estimateCounter = 1000;
 

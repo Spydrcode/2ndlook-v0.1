@@ -2,10 +2,10 @@
 
 /**
  * Test client for 2ndlook MCP Server
- * 
+ *
  * Usage:
  *   npx tsx mcp-server/test-client.ts
- * 
+ *
  * This script demonstrates how to connect to the MCP server
  * and call its tools programmatically.
  */
@@ -30,7 +30,7 @@ async function main() {
     },
     {
       capabilities: {},
-    }
+    },
   );
 
   // Connect
@@ -41,7 +41,7 @@ async function main() {
   console.log("📋 Listing available tools...");
   const { tools } = await client.listTools();
   console.log(`Found ${tools.length} tools:\n`);
-  
+
   for (const tool of tools) {
     console.log(`  - ${tool.name}: ${tool.description}`);
   }
@@ -86,4 +86,3 @@ main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);
 });
-

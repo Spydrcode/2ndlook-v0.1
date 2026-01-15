@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, RefreshCw, Download, Users, Share2, Printer } from "lucide-react";
+
+import { ArrowRight, Download, Printer, RefreshCw, Share2, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,7 @@ export default function NextStepsPage() {
     <div className="flex flex-1 flex-col gap-6 p-6">
       {/* Header */}
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Next steps (optional)</h1>
+        <h1 className="font-semibold text-2xl tracking-tight">Next steps (optional)</h1>
         <p className="text-muted-foreground">
           If you want, here are a few ways to use the snapshot without adding more tools.
         </p>
@@ -30,9 +31,7 @@ export default function NextStepsPage() {
               <RefreshCw className="h-5 w-5 text-muted-foreground" />
               <CardTitle>Run another snapshot</CardTitle>
             </div>
-            <CardDescription>
-              Use a different time window or a new import.
-            </CardDescription>
+            <CardDescription>Use a different time window or a new import.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild className="w-full">
@@ -51,9 +50,7 @@ export default function NextStepsPage() {
               <Download className="h-5 w-5 text-muted-foreground" />
               <CardTitle>Save a copy</CardTitle>
             </div>
-            <CardDescription>
-              Download a simple view you can reference later.
-            </CardDescription>
+            <CardDescription>Download a simple view you can reference later.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" className="w-full" onClick={handlePrint}>
@@ -70,9 +67,7 @@ export default function NextStepsPage() {
               <Users className="h-5 w-5 text-muted-foreground" />
               <CardTitle>Connect optional context</CardTitle>
             </div>
-            <CardDescription>
-              Calendar and CRM can add context later, but they're not required.
-            </CardDescription>
+            <CardDescription>Calendar and CRM can add context later, but they're not required.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline" className="w-full">
@@ -106,7 +101,7 @@ export default function NextStepsPage() {
       {/* Closing line */}
       <Card className="border-muted">
         <CardContent className="pt-6">
-          <p className="text-sm text-muted-foreground text-center">
+          <p className="text-center text-muted-foreground text-sm">
             Nothing here changes your tools. 2ndlook is a snapshot you can return to when you want.
           </p>
         </CardContent>

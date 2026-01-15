@@ -4,10 +4,11 @@
  * Signal-only: no customer names, addresses, line items, notes, taxes, discounts, or payments.
  */
 
-import type { UniversalConnector } from "../connector";
-import type { InvoiceCanonicalRow } from "../types";
-import { NotImplementedError } from "../connector";
 import { normalizeInvoiceStatus } from "@/lib/ingest/statuses";
+
+import type { UniversalConnector } from "../connector";
+import { NotImplementedError } from "../connector";
+import type { InvoiceCanonicalRow } from "../types";
 
 export class FileInvoiceConnector implements UniversalConnector {
   category = "invoices" as const;
@@ -22,9 +23,7 @@ export class FileInvoiceConnector implements UniversalConnector {
    * Normalize invoices from an uploaded file.
    * For v0.1, validates CSV structure and normalizes to canonical shape.
    */
-  async normalizeInvoicesFromFile(
-    file: File | Blob | Buffer
-  ): Promise<InvoiceCanonicalRow[]> {
+  async normalizeInvoicesFromFile(file: File | Blob | Buffer): Promise<InvoiceCanonicalRow[]> {
     const content = await this.readFileAsText(file);
     const lines = content.split("\n").filter((line) => line.trim().length > 0);
 

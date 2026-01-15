@@ -35,6 +35,7 @@ export interface BucketedAggregates {
   weekly_volume: { week: string; count: number }[];
   price_distribution: { band: string; count: number }[];
   latency_distribution: { band: string; count: number }[];
+  job_type_distribution?: { job_type: string; count: number }[];
   // Optional: invoice signals (present when invoices are available)
   invoiceSignals?: {
     invoice_count: number;
@@ -66,19 +67,14 @@ export class MCPClient {
     this.timeout = options?.timeout || 10000; // 10s default
 
     if (!this.serverUrl) {
-      throw new Error(
-        "MCP_SERVER_URL environment variable is required for MCP client"
-      );
+      throw new Error("MCP_SERVER_URL environment variable is required for MCP client");
     }
   }
 
   /**
    * Call an MCP tool and return parsed response
    */
-  async callTool<T = unknown>(
-    toolName: string,
-    args: Record<string, unknown>
-  ): Promise<T> {
+  async callTool<T = unknown>(toolName: string, args: Record<string, unknown>): Promise<T> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
@@ -88,7 +84,7 @@ export class MCPClient {
       };
 
       if (this.authToken) {
-        headers["Authorization"] = `Bearer ${this.authToken}`;
+        headers.Authorization = `Bearer ${this.authToken}`;
       }
 
       const response = await fetch(`${this.serverUrl}/call-tool`, {
@@ -105,16 +101,13 @@ export class MCPClient {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "Unknown error");
-        throw new Error(
-          `MCP tool call failed (${response.status}): ${errorText}`
-        );
+        throw new Error(`MCP tool call failed (${response.status}): ${errorText}`);
       }
 
       const result: MCPToolResponse = await response.json();
 
       if (result.isError) {
-        const errorMsg =
-          result.content[0]?.text || "MCP tool returned error";
+        const errorMsg = result.content[0]?.text || "MCP tool returned error";
         throw new Error(`MCP tool error: ${errorMsg}`);
       }
 
@@ -128,9 +121,7 @@ export class MCPClient {
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === "AbortError") {
-          throw new Error(
-            `MCP tool call timeout after ${this.timeout}ms: ${toolName}`
-          );
+          throw new Error(`MCP tool call timeout after ${this.timeout}ms: ${toolName}`);
         }
         throw error;
       }
@@ -144,10 +135,7 @@ export class MCPClient {
    * Get bucketed aggregates for a source
    * Returns bucket-only data (no raw estimates)
    */
-  async getBucketedAggregates(
-    installation_id: string,
-    source_id: string
-  ): Promise<BucketedAggregates> {
+  async getBucketedAggregates(installation_id: string, source_id: string): Promise<BucketedAggregates> {
     return this.callTool<BucketedAggregates>("get_bucketed_aggregates", {
       installation_id,
       source_id,
@@ -180,10 +168,6 @@ export class MCPClient {
  * Create MCP client instance
  * Server-side only
  */
-export function createMCPClient(options?: {
-  serverUrl?: string;
-  authToken?: string;
-  timeout?: number;
-}): MCPClient {
+export function createMCPClient(options?: { serverUrl?: string; authToken?: string; timeout?: number }): MCPClient {
   return new MCPClient(options);
 }

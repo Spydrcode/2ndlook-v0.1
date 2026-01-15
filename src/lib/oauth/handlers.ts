@@ -1,11 +1,13 @@
 import "server-only";
+
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
-import { createOAuthState, serializeOAuthState, verifyOAuthState } from "@/lib/oauth/state";
+import { upsertConnection } from "@/lib/oauth/connections";
 import { createCodeChallenge, createCodeVerifier } from "@/lib/oauth/pkce";
 import { getOAuthProviderConfig, type OAuthProviderTool } from "@/lib/oauth/providers";
-import { upsertConnection } from "@/lib/oauth/connections";
+import { createOAuthState, serializeOAuthState, verifyOAuthState } from "@/lib/oauth/state";
 
 const DEFAULT_REDIRECT_PATH = "/dashboard/connect";
 
@@ -26,19 +28,13 @@ function normalizeOAuthError(code?: string): string {
   return "oauth_exchange_failed";
 }
 
-export async function handleOAuthStart(
-  request: NextRequest,
-  provider: OAuthProviderTool
-): Promise<NextResponse> {
+export async function handleOAuthStart(request: NextRequest, provider: OAuthProviderTool): Promise<NextResponse> {
   const appUrl = getAppUrl(request);
 
   try {
     const installationId = await getOrCreateInstallationId();
-    const requestedRedirect =
-      request.nextUrl.searchParams.get("redirect_to") ?? DEFAULT_REDIRECT_PATH;
-    const redirectTo = requestedRedirect.startsWith("/")
-      ? requestedRedirect
-      : DEFAULT_REDIRECT_PATH;
+    const requestedRedirect = request.nextUrl.searchParams.get("redirect_to") ?? DEFAULT_REDIRECT_PATH;
+    const redirectTo = requestedRedirect.startsWith("/") ? requestedRedirect : DEFAULT_REDIRECT_PATH;
 
     const config = getOAuthProviderConfig(provider);
     const codeVerifier = config.usesPkce ? createCodeVerifier() : undefined;
@@ -59,20 +55,14 @@ export async function handleOAuthStart(
     });
 
     return NextResponse.redirect(url);
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.redirect(
-      new URL(
-        `${DEFAULT_REDIRECT_PATH}?error=oauth_provider_misconfigured&provider=${provider}`,
-        appUrl
-      )
+      new URL(`${DEFAULT_REDIRECT_PATH}?error=oauth_provider_misconfigured&provider=${provider}`, appUrl),
     );
   }
 }
 
-export async function handleOAuthCallback(
-  request: NextRequest,
-  provider: OAuthProviderTool
-): Promise<NextResponse> {
+export async function handleOAuthCallback(request: NextRequest, provider: OAuthProviderTool): Promise<NextResponse> {
   const appUrl = getAppUrl(request);
   const searchParams = request.nextUrl.searchParams;
   const redirectBase = new URL(DEFAULT_REDIRECT_PATH, appUrl);
@@ -133,19 +123,10 @@ export async function handleOAuthCallback(
       installationId: verified.installation_id,
       provider,
       accessToken: tokenResponse.access_token,
-      refreshToken:
-        typeof tokenResponse.refresh_token === "string"
-          ? tokenResponse.refresh_token
-          : null,
+      refreshToken: typeof tokenResponse.refresh_token === "string" ? tokenResponse.refresh_token : null,
       tokenExpiresAt: expiresAt,
-      scopes:
-        typeof tokenResponse.scope === "string"
-          ? tokenResponse.scope
-          : config.scopes.join(" "),
-      externalAccountId: config.parseExternalAccountId(
-        tokenResponse,
-        searchParams
-      ),
+      scopes: typeof tokenResponse.scope === "string" ? tokenResponse.scope : config.scopes.join(" "),
+      externalAccountId: config.parseExternalAccountId(tokenResponse, searchParams),
       metadata: {
         granted_at: new Date().toISOString(),
         environment: getProviderEnvironment(provider),
@@ -156,10 +137,7 @@ export async function handleOAuthCallback(
     redirectTo.searchParams.set("connected", provider);
     return NextResponse.redirect(redirectTo.toString());
   } catch (error) {
-    redirectBase.searchParams.set(
-      "error",
-      normalizeExchangeError(error instanceof Error ? error.message : "")
-    );
+    redirectBase.searchParams.set("error", normalizeExchangeError(error instanceof Error ? error.message : ""));
     redirectBase.searchParams.set("provider", provider);
     return NextResponse.redirect(redirectBase.toString());
   }

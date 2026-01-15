@@ -2,13 +2,13 @@
 
 /**
  * Look up a specific Jobber connection event by ID
- * 
+ *
  * Usage:
  *   npx tsx scripts/lookup-event.ts <event-id>
  */
 
-import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import { config } from "dotenv";
 
 config({ path: ".env.local" });
 
@@ -21,7 +21,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false }
+  auth: { autoRefreshToken: false, persistSession: false },
 });
 
 const eventId = process.argv[2] || "61f2f069-1c24-4e5c-8c61-8186974f943f";

@@ -3,8 +3,8 @@
  * Stores minimal identifiers only (no PII like names or emails).
  */
 
-import type { ClientNormalized } from "@/types/2ndlook";
 import { MAX_CLIENT_RECORDS, WINDOW_DAYS } from "@/lib/config/limits";
+import type { ClientNormalized } from "@/types/2ndlook";
 
 export interface ClientRowInput {
   client_id: string;
@@ -26,7 +26,7 @@ export async function normalizeClientsAndStore(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   sourceId: string,
-  rows: ClientRowInput[]
+  rows: ClientRowInput[],
 ): Promise<NormalizeClientsResult> {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - WINDOW_DAYS);

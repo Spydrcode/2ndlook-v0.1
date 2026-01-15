@@ -1,19 +1,13 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
-import type {
-  SnapshotRequest,
-  SnapshotResponse,
-} from "@/types/2ndlook";
 import { runSnapshotOrchestrator } from "@/lib/orchestrator/runSnapshot";
 import { runDeterministicSnapshot } from "@/lib/snapshot/deterministic";
 import { resolveSnapshotMode } from "@/lib/snapshot/modeSelection";
-import {
-  logSnapshotEvent,
-  recordSnapshotMetrics,
-  SnapshotErrorCodes,
-} from "@/lib/telemetry/snapshotLog";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { logSnapshotEvent, recordSnapshotMetrics, SnapshotErrorCodes } from "@/lib/telemetry/snapshotLog";
+import type { SnapshotRequest, SnapshotResponse } from "@/types/2ndlook";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,10 +18,7 @@ export async function POST(request: NextRequest) {
     const { source_id } = body;
 
     if (!source_id) {
-      return NextResponse.json(
-        { error: "source_id is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "source_id is required" }, { status: 400 });
     }
 
     // Verify source ownership
@@ -42,10 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (source.status !== "bucketed" && source.status !== "insufficient_data") {
-      return NextResponse.json(
-        { error: "Source must be bucketed before snapshot generation" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Source must be bucketed before snapshot generation" }, { status: 400 });
     }
 
     // Resolve snapshot mode (supports auto mode)
@@ -77,7 +65,7 @@ export async function POST(request: NextRequest) {
       } catch (orchestratorError) {
         // Fallback to deterministic on any orchestrator failure
         fallbackUsed = true;
-        
+
         // Categorize error
         if (orchestratorError instanceof Error) {
           if (orchestratorError.message.includes("OpenAI")) {
@@ -90,7 +78,7 @@ export async function POST(request: NextRequest) {
             errorCode = SnapshotErrorCodes.UNKNOWN;
           }
         }
-        
+
         console.error("[Snapshot API] Orchestrator failed, falling back to deterministic:", {
           source_id,
           error: orchestratorError instanceof Error ? orchestratorError.name : "Unknown",
@@ -149,12 +137,7 @@ export async function POST(request: NextRequest) {
     console.error("[Snapshot API] Fatal error:", {
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    
-    return NextResponse.json(
-      { error: "Unable to generate snapshot. Please try again." },
-      { status: 500 }
-    );
+
+    return NextResponse.json({ error: "Unable to generate snapshot. Please try again." }, { status: 500 });
   }
 }
-
-

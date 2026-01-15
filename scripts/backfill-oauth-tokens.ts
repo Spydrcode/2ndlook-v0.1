@@ -1,5 +1,5 @@
-import { createAdminClient } from "@/lib/supabase/admin";
 import { encrypt } from "@/lib/security/crypto";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type LegacyRow = {
   id: string;
@@ -29,9 +29,7 @@ async function run() {
     .map((row: LegacyRow) => ({
       id: row.id,
       access_token_enc: encrypt(row.access_token_legacy as string),
-      refresh_token_enc: row.refresh_token_legacy
-        ? encrypt(row.refresh_token_legacy)
-        : null,
+      refresh_token_enc: row.refresh_token_legacy ? encrypt(row.refresh_token_legacy) : null,
       token_expires_at: row.expires_at_legacy ?? null,
       updated_at: new Date().toISOString(),
     }));
@@ -41,9 +39,7 @@ async function run() {
     return;
   }
 
-  const { error: updateError } = await supabase
-    .from("oauth_connections")
-    .upsert(updates, { onConflict: "id" });
+  const { error: updateError } = await supabase.from("oauth_connections").upsert(updates, { onConflict: "id" });
 
   if (updateError) {
     throw new Error(updateError.message);

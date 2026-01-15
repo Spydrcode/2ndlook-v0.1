@@ -4,10 +4,11 @@
  * This is the v0.1 implementation used by the import flow.
  */
 
-import type { UniversalConnector } from "../connector";
-import type { EstimateCanonicalRow } from "../types";
-import { NotImplementedError } from "../connector";
 import { normalizeEstimateStatus } from "@/lib/ingest/statuses";
+
+import type { UniversalConnector } from "../connector";
+import { NotImplementedError } from "../connector";
+import type { EstimateCanonicalRow } from "../types";
 
 export class FileEstimateConnector implements UniversalConnector {
   category = "estimates" as const;
@@ -23,9 +24,7 @@ export class FileEstimateConnector implements UniversalConnector {
    * For v0.1, this is a placeholder that validates the file structure
    * without duplicating the existing /api/ingest logic.
    */
-  async normalizeEstimatesFromFile(
-    file: File | Blob | Buffer
-  ): Promise<EstimateCanonicalRow[]> {
+  async normalizeEstimatesFromFile(file: File | Blob | Buffer): Promise<EstimateCanonicalRow[]> {
     // Parse file content
     const text = await this.readFileAsText(file);
 

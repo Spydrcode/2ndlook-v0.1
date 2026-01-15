@@ -29,10 +29,7 @@ interface SnapshotPromptOptions {
  * When tool is provided (e.g., "jobber", "housecall-pro"), adjusts
  * language to match the connector context without changing schema.
  */
-export function buildSnapshotPrompt(
-  aggregates: BucketedAggregates,
-  options: SnapshotPromptOptions = {}
-): string {
+export function buildSnapshotPrompt(aggregates: BucketedAggregates, options: SnapshotPromptOptions = {}): string {
   const { tool } = options;
 
   // Tool-aware intro (optional enhancement)
@@ -93,22 +90,16 @@ function formatToolName(tool: string): string {
 }
 
 // Helper: Format weekly volume for prompt
-function formatWeeklyVolume(
-  weeklyVolume: Array<{ week: string; count: number }>
-): string {
+function formatWeeklyVolume(weeklyVolume: Array<{ week: string; count: number }>): string {
   return weeklyVolume.map((w) => `  ${w.week}: ${w.count} estimates`).join("\n");
 }
 
 // Helper: Format price distribution for prompt
-function formatPriceDistribution(
-  priceDistribution: Array<{ band: string; count: number }>
-): string {
+function formatPriceDistribution(priceDistribution: Array<{ band: string; count: number }>): string {
   return priceDistribution.map((p) => `  ${p.band}: ${p.count} estimates`).join("\n");
 }
 
 // Helper: Format decision latency for prompt
-function formatDecisionLatency(
-  decisionLatency: Array<{ band: string; count: number }>
-): string {
+function formatDecisionLatency(decisionLatency: Array<{ band: string; count: number }>): string {
   return decisionLatency.map((d) => `  ${d.band}: ${d.count} estimates`).join("\n");
 }

@@ -1,12 +1,4 @@
-import {
-  Cable,
-  CheckSquare,
-  ClipboardList,
-  FileUp,
-  LifeBuoy,
-  type LucideIcon,
-  PieChart,
-} from "lucide-react";
+import { Cable, CheckSquare, ClipboardList, FileUp, LifeBuoy, type LucideIcon, PieChart } from "lucide-react";
 
 export interface NavSubItem {
   title: string;

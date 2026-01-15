@@ -21,7 +21,7 @@ export function validateEnvironment(): EnvironmentConfig {
     throw new Error(
       "OPENAI_API_KEY is not configured. " +
         "Add it to your .env.local file to enable AI snapshot generation. " +
-        "Get your API key at: https://platform.openai.com/api-keys"
+        "Get your API key at: https://platform.openai.com/api-keys",
     );
   }
 
@@ -48,9 +48,7 @@ export function getEnvironmentInfo() {
   return {
     openai: {
       configured: isOpenAIConfigured(),
-      keyPrefix: process.env.OPENAI_API_KEY
-        ? `${process.env.OPENAI_API_KEY.slice(0, 7)}...`
-        : "not set",
+      keyPrefix: process.env.OPENAI_API_KEY ? `${process.env.OPENAI_API_KEY.slice(0, 7)}...` : "not set",
     },
     nodeEnv: process.env.NODE_ENV || "development",
   };

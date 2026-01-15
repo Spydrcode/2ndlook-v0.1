@@ -1,20 +1,14 @@
 import Link from "next/link";
+
 import { AlertCircle, ArrowRight } from "lucide-react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getInstallationId } from "@/lib/installations/cookie";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { ConfidenceLevel } from "@/types/2ndlook";
 
 function getConfidenceBadgeVariant(level: ConfidenceLevel): "default" | "secondary" | "outline" {
@@ -59,7 +53,7 @@ export default async function SnapshotsPage() {
     return (
       <div className="flex flex-1 flex-col gap-6 p-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Snapshots</h1>
+          <h1 className="font-semibold text-2xl tracking-tight">Snapshots</h1>
           <p className="text-muted-foreground">Recent snapshots you've created</p>
         </div>
         <Alert variant="destructive">
@@ -78,12 +72,12 @@ export default async function SnapshotsPage() {
     return (
       <div className="flex flex-1 flex-col gap-6 p-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Snapshots</h1>
+          <h1 className="font-semibold text-2xl tracking-tight">Snapshots</h1>
           <p className="text-muted-foreground">Recent snapshots you've created</p>
         </div>
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
-            <div className="text-center space-y-2">
+          <CardContent className="flex flex-col items-center justify-center gap-4 py-12">
+            <div className="space-y-2 text-center">
               <p className="text-muted-foreground">No snapshots yet.</p>
             </div>
             <Button asChild>
@@ -92,12 +86,9 @@ export default async function SnapshotsPage() {
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               Need help?{" "}
-              <a
-                href="mailto:support@2ndlook.app"
-                className="underline hover:text-foreground transition-colors"
-              >
+              <a href="mailto:support@2ndlook.app" className="underline transition-colors hover:text-foreground">
                 Contact support
               </a>
             </p>
@@ -110,11 +101,9 @@ export default async function SnapshotsPage() {
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Snapshots</h1>
+        <h1 className="font-semibold text-2xl tracking-tight">Snapshots</h1>
         <p className="text-muted-foreground">Recent snapshots you've created</p>
-        <p className="text-sm text-muted-foreground">
-          Meaningful estimates only. No customer or line-item details.
-        </p>
+        <p className="text-muted-foreground text-sm">Meaningful estimates only. No customer or line-item details.</p>
       </div>
 
       <Card>
@@ -135,9 +124,7 @@ export default async function SnapshotsPage() {
             <TableBody>
               {snapshots.map((snapshot) => (
                 <TableRow key={snapshot.id}>
-                  <TableCell className="font-medium">
-                    {formatDate(snapshot.generated_at)}
-                  </TableCell>
+                  <TableCell className="font-medium">{formatDate(snapshot.generated_at)}</TableCell>
                   <TableCell>{snapshot.estimate_count} meaningful</TableCell>
                   <TableCell>
                     <Badge variant={getConfidenceBadgeVariant(snapshot.confidence_level)}>
@@ -170,5 +157,3 @@ export default async function SnapshotsPage() {
     </div>
   );
 }
-
-

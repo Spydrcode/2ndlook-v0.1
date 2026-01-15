@@ -3,9 +3,9 @@
  * Applies 90 day window, 100 record cap, and canonical status mapping.
  */
 
-import type { InvoiceNormalized } from "@/types/2ndlook";
 import { MAX_INVOICE_RECORDS, WINDOW_DAYS } from "@/lib/config/limits";
 import { normalizeInvoiceStatus } from "@/lib/ingest/statuses";
+import type { InvoiceNormalized } from "@/types/2ndlook";
 
 export interface InvoiceRowInput {
   invoice_id: string;
@@ -28,7 +28,7 @@ export async function normalizeInvoicesAndStore(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   sourceId: string,
-  rows: InvoiceRowInput[]
+  rows: InvoiceRowInput[],
 ): Promise<NormalizeInvoicesResult> {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - WINDOW_DAYS);

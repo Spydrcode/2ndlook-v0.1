@@ -3,7 +3,13 @@
  * Run with: npx ts-node src/lib/connectors/sanity-check.ts
  */
 
-import { listConnectors, listConnectorsByCategory, getConnector, isConnectorImplemented, NotImplementedError } from "./index";
+import {
+  getConnector,
+  isConnectorImplemented,
+  listConnectors,
+  listConnectorsByCategory,
+  NotImplementedError,
+} from "./index";
 
 async function runSanityChecks() {
   console.log("Running connector registry sanity checks...\n");
@@ -18,9 +24,13 @@ async function runSanityChecks() {
   for (const connector of allConnectors) {
     if (!connector.category) throw new Error(`Connector ${connector.tool} missing category`);
     if (!connector.tool) throw new Error("Connector missing tool identifier");
-    if (typeof connector.isImplemented !== "boolean") throw new Error(`Connector ${connector.tool} missing isImplemented flag`);
-    if (typeof connector.getDisplayName !== "function") throw new Error(`Connector ${connector.tool} missing getDisplayName method`);
-    console.log(`  ${connector.getDisplayName()} (${connector.category}:${connector.tool}) - ${connector.isImplemented ? "implemented" : "stub"}`);
+    if (typeof connector.isImplemented !== "boolean")
+      throw new Error(`Connector ${connector.tool} missing isImplemented flag`);
+    if (typeof connector.getDisplayName !== "function")
+      throw new Error(`Connector ${connector.tool} missing getDisplayName method`);
+    console.log(
+      `  ${connector.getDisplayName()} (${connector.category}:${connector.tool}) - ${connector.isImplemented ? "implemented" : "stub"}`,
+    );
   }
 
   console.log("\nTesting category filtering:");

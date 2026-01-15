@@ -2,18 +2,18 @@
 
 /**
  * Test script to verify Jobber GraphQL error logging
- * 
+ *
  * Tests that error responses include:
  * - status / statusText
  * - body (responseText)
  * - request-id header
- * 
+ *
  * Usage:
  *   JOBBER_GQL_VERSION=invalid-version npx ts-node --compiler-options '{"module":"CommonJS"}' scripts/test-jobber-graphql-error.ts
  */
 
-import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import { config } from "dotenv";
 
 // Load environment
 config({ path: ".env.local" });
@@ -30,8 +30,8 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
     autoRefreshToken: false,
-    persistSession: false
-  }
+    persistSession: false,
+  },
 });
 
 async function testJobberGraphQLError() {
@@ -40,12 +40,9 @@ async function testJobberGraphQLError() {
 
   // First, let's check what tables exist
   console.log("🔍 Checking database schema...");
-  
+
   // Try to get any oauth connection (don't filter by tool yet)
-  const { data: allConnections, error: allError } = await supabase
-    .from("oauth_connections")
-    .select("*")
-    .limit(5);
+  const { data: allConnections, error: allError } = await supabase.from("oauth_connections").select("*").limit(5);
 
   if (allError) {
     console.error("❌ Error querying oauth_connections:", allError);
@@ -57,14 +54,15 @@ async function testJobberGraphQLError() {
   console.log("📊 Found", allConnections?.length || 0, "OAuth connections");
   if (allConnections && allConnections.length > 0) {
     console.log("   Schema:", Object.keys(allConnections[0]));
-    console.log("   Connections:", allConnections.map((c: any) => `${c.provider} (${c.installation_id})`));
+    console.log(
+      "   Connections:",
+      allConnections.map((c: any) => `${c.provider} (${c.installation_id})`),
+    );
   }
 
   // Now find a Jobber connection (check both 'tool' and 'provider' fields)
-  const jobberConnection = allConnections?.find((c: any) => 
-    c.tool === 'jobber' || c.provider === 'jobber'
-  );
-  
+  const jobberConnection = allConnections?.find((c: any) => c.tool === "jobber" || c.provider === "jobber");
+
   if (!jobberConnection) {
     console.error("❌ No Jobber OAuth connection found.");
     console.log("\n💡 To test this:");
@@ -81,7 +79,7 @@ async function testJobberGraphQLError() {
   try {
     // Import the graphql module which uses JOBBER_GQL_VERSION from env
     const { fetchEstimates } = await import("../src/lib/jobber/graphql");
-    
+
     const result = await fetchEstimates(jobberConnection.installation_id);
 
     console.log("✅ Unexpected success! Got result:", result);
@@ -97,7 +95,7 @@ async function testJobberGraphQLError() {
     console.log("   requestId:", err.requestId);
     console.log("   graphqlErrors:", err.graphqlErrors ? "present" : "null");
     console.log("   responseText (first 500 chars):", err.responseText?.slice(0, 500));
-    
+
     console.log("\n✅ Error logging test complete!");
     console.log("\n📝 Verification checklist:");
     console.log("   ✓ status: ", err.status ? "✅" : "❌");

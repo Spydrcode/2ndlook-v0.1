@@ -2,18 +2,18 @@
 
 /**
  * Test Jobber token refresh with rotation
- * 
+ *
  * Verifies:
  * 1. Token refresh updates BOTH access_token AND refresh_token
  * 2. Race condition protection (concurrent refresh attempts)
  * 3. New tokens are properly saved to database
- * 
+ *
  * Usage:
  *   npx tsx scripts/test-jobber-token-refresh.ts
  */
 
-import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import { config } from "dotenv";
 
 config({ path: ".env.local" });
 
@@ -26,7 +26,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false }
+  auth: { autoRefreshToken: false, persistSession: false },
 });
 
 async function testTokenRefresh() {
@@ -48,15 +48,15 @@ async function testTokenRefresh() {
   const connection = connections[0];
   console.log("✅ Found Jobber connection:", connection.installation_id);
   console.log("📊 Current token expires:", connection.token_expires_at);
-  console.log("📊 Current refresh token (first 20 chars):", connection.refresh_token_enc?.slice(0, 20) + "...");
+  console.log("📊 Current refresh token (first 20 chars):", `${connection.refresh_token_enc?.slice(0, 20)}...`);
 
   // Import the refresh function
   const { getJobberAccessToken } = await import("../src/lib/jobber/oauth");
 
   console.log("\n🔄 Attempting to get access token (will refresh if needed)...");
-  
+
   const accessToken = await getJobberAccessToken(connection.installation_id);
-  
+
   if (!accessToken) {
     console.error("❌ Failed to get access token");
     console.log("\n💡 Check:");
@@ -79,12 +79,12 @@ async function testTokenRefresh() {
   if (updatedConnection) {
     console.log("\n📊 Updated connection details:");
     console.log("   New token expires:", updatedConnection.token_expires_at);
-    console.log("   New refresh token (first 20 chars):", updatedConnection.refresh_token_enc?.slice(0, 20) + "...");
-    
-    const tokensChanged = 
+    console.log("   New refresh token (first 20 chars):", `${updatedConnection.refresh_token_enc?.slice(0, 20)}...`);
+
+    const tokensChanged =
       connection.token_expires_at !== updatedConnection.token_expires_at ||
       connection.refresh_token_enc !== updatedConnection.refresh_token_enc;
-    
+
     if (tokensChanged) {
       console.log("\n✅ SUCCESS: Tokens were refreshed and updated!");
       console.log("   ✓ Expiration changed:", connection.token_expires_at !== updatedConnection.token_expires_at);
@@ -97,7 +97,7 @@ async function testTokenRefresh() {
   // Test race condition protection
   console.log("\n🏁 Testing race condition protection...");
   console.log("   Simulating 3 concurrent requests...");
-  
+
   const start = Date.now();
   const results = await Promise.all([
     getJobberAccessToken(connection.installation_id),
@@ -106,12 +106,12 @@ async function testTokenRefresh() {
   ]);
   const duration = Date.now() - start;
 
-  const allSucceeded = results.every(token => token && token.length > 0);
-  const allSame = results.every(token => token === results[0]);
+  const allSucceeded = results.every((token) => token && token.length > 0);
+  const allSame = results.every((token) => token === results[0]);
 
   console.log("   ✓ All requests succeeded:", allSucceeded ? "✅" : "❌");
   console.log("   ✓ All got same token:", allSame ? "✅" : "❌");
-  console.log("   ✓ Completed in:", duration + "ms");
+  console.log("   ✓ Completed in:", `${duration}ms`);
 
   if (allSucceeded && allSame) {
     console.log("\n🎉 SUCCESS: Race condition protection working!");

@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+
 import { getInstallationId } from "@/lib/installations/cookie";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -46,9 +47,7 @@ export async function GET(_request: NextRequest) {
     created_at: string;
   }>;
 
-  const lastSyncEvent = events.find(
-    (event) => event.phase === "ingest_success" || event.phase === "ingest_error"
-  );
+  const lastSyncEvent = events.find((event) => event.phase === "ingest_success" || event.phase === "ingest_error");
   const lastErrorEvent = events.find((event) => {
     if (event.phase === "ingest_error") return true;
     const details = event.details || {};
@@ -59,11 +58,7 @@ export async function GET(_request: NextRequest) {
   const lastEvent = events[0];
 
   const lastSyncStatus =
-    lastSyncEvent?.phase === "ingest_success"
-      ? "success"
-      : lastSyncEvent?.phase === "ingest_error"
-        ? "fail"
-        : null;
+    lastSyncEvent?.phase === "ingest_success" ? "success" : lastSyncEvent?.phase === "ingest_error" ? "fail" : null;
 
   const lastErrorDetails = lastErrorEvent?.details || null;
   const lastErrorMessage =
@@ -77,8 +72,7 @@ export async function GET(_request: NextRequest) {
     last_sync_status: lastSyncStatus,
     last_error_message: lastErrorMessage,
     last_error_details: lastErrorDetailsFull,
-    last_event_id:
-      lastErrorEvent?.event_id || lastSyncEvent?.event_id || lastEvent?.event_id || null,
+    last_event_id: lastErrorEvent?.event_id || lastSyncEvent?.event_id || lastEvent?.event_id || null,
     last_event_phase: lastEvent?.phase ?? null,
     last_event_at: lastEvent?.created_at ?? null,
   });

@@ -3,12 +3,9 @@
  * Used by both CSV upload and OAuth connectors (Jobber, etc.)
  */
 
-import type { CSVEstimateRow, EstimateNormalized } from "@/types/2ndlook";
 import { MAX_ESTIMATE_RECORDS, WINDOW_DAYS } from "@/lib/config/limits";
-import {
-  MEANINGFUL_ESTIMATE_STATUSES,
-  normalizeEstimateStatus,
-} from "@/lib/ingest/statuses";
+import { MEANINGFUL_ESTIMATE_STATUSES, normalizeEstimateStatus } from "@/lib/ingest/statuses";
+import type { CSVEstimateRow, EstimateNormalized } from "@/types/2ndlook";
 
 export interface NormalizeResult {
   kept: number;
@@ -25,13 +22,13 @@ export async function normalizeAndStore(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   sourceId: string,
-  rows: CSVEstimateRow[]
+  rows: CSVEstimateRow[],
 ): Promise<NormalizeResult> {
   const now = new Date();
   const cutoffDate = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   const normalized: Omit<EstimateNormalized, "id">[] = [];
-  let rejected = 0;
+  let _rejected = 0;
   let meaningful = 0;
 
   for (const row of rows) {
@@ -41,27 +38,27 @@ export async function normalizeAndStore(
     const updatedAt = row.updated_at ? new Date(row.updated_at) : null;
 
     if (Number.isNaN(createdAt.getTime())) {
-      rejected++;
+      _rejected++;
       continue;
     }
 
     // Enforce: within 90 days
     const activityDate = closedAt ?? updatedAt ?? createdAt;
     if (Number.isNaN(activityDate.getTime()) || activityDate < cutoffDate) {
-      rejected++;
+      _rejected++;
       continue;
     }
 
     // Enforce: valid amount
     const amount = parseFloat(String(row.amount).replace(/[^0-9.-]/g, ""));
     if (Number.isNaN(amount) || amount < 0) {
-      rejected++;
+      _rejected++;
       continue;
     }
 
     // Enforce: max 100 estimates
     if (normalized.length >= MAX_ESTIMATE_RECORDS) {
-      rejected++;
+      _rejected++;
       continue;
     }
 
@@ -85,9 +82,7 @@ export async function normalizeAndStore(
 
   // Bulk insert
   if (normalized.length > 0) {
-    const { error } = await supabase
-      .from("estimates_normalized")
-      .insert(normalized);
+    const { error } = await supabase.from("estimates_normalized").insert(normalized);
 
     if (error) {
       throw new Error(`Failed to insert estimates: ${error.message}`);

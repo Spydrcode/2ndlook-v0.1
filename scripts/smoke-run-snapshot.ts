@@ -2,16 +2,16 @@
 
 /**
  * Smoke test for snapshot generation
- * 
+ *
  * Tests the complete pipeline:
  * 1. Ingest demo estimates
  * 2. Bucket estimates
  * 3. Generate snapshot (deterministic or orchestrated based on SNAPSHOT_MODE)
  * 4. Validate SnapshotResult schema
- * 
+ *
  * Usage:
  *   npx ts-node --compiler-options '{"module":"CommonJS"}' scripts/smoke-run-snapshot.ts
- * 
+ *
  * Prerequisites:
  *   - SUPABASE_URL and SUPABASE_ANON_KEY in .env.local
  *   - Demo data in src/demo-data/estimates-demo.csv
@@ -19,16 +19,18 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "fs";
-import { join } from "path";
 import { config } from "dotenv";
-import { randomUUID } from "crypto";
+
+import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // Load environment
 config({ path: ".env.local" });
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SNAPSHOT_MODE = process.env.SNAPSHOT_MODE || "deterministic";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -40,8 +42,8 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
     autoRefreshToken: false,
-    persistSession: false
-  }
+    persistSession: false,
+  },
 });
 
 interface SnapshotResult {
@@ -96,10 +98,10 @@ async function runSmokeTest() {
   try {
     // Step 1: Create test source (no-login mode - use installation_id)
     console.log("📝 Step 1: Creating test source...");
-    
+
     // Generate a test installation_id
     const installation_id = randomUUID();
-    
+
     // Create installation record
     const { data: installation, error: installError } = await supabase
       .from("installations")
@@ -113,7 +115,7 @@ async function runSmokeTest() {
 
     const source_name = `Smoke Test ${new Date().toISOString()}`;
 
-    const { data: source, error: sourceError} = await supabase
+    const { data: source, error: sourceError } = await supabase
       .from("sources")
       .insert({
         installation_id,
@@ -133,11 +135,11 @@ async function runSmokeTest() {
 
     // Step 2: Load demo data
     console.log("📂 Step 2: Loading demo data...");
-    
+
     // Try .demo/estimates-demo.csv first, fallback to src/demo-data
     let demoPath = join(process.cwd(), ".demo", "estimates-demo.csv");
     let csvContent: string;
-    
+
     try {
       csvContent = readFileSync(demoPath, "utf-8");
       console.log(`✅ Demo data loaded from .demo/ (${csvContent.split("\n").length - 1} rows)\n`);
@@ -147,7 +149,7 @@ async function runSmokeTest() {
       try {
         csvContent = readFileSync(demoPath, "utf-8");
         console.log(`✅ Demo data loaded from src/demo-data/ (${csvContent.split("\n").length - 1} rows)\n`);
-      } catch (error) {
+      } catch (_error) {
         console.error("❌ Demo data not found. Run: npm run demo:generate");
         console.error(`   Expected at: ${join(process.cwd(), ".demo", "estimates-demo.csv")}`);
         process.exit(1);
@@ -161,7 +163,7 @@ async function runSmokeTest() {
     // For smoke test, we'll mock the ingestion by directly inserting
     // In production, this would go through /api/ingest
     const lines = csvContent.trim().split("\n");
-    
+
     const estimates = lines.slice(1).map((line) => {
       const values = line.split(",");
       return {
@@ -175,9 +177,7 @@ async function runSmokeTest() {
       };
     });
 
-    const { error: ingestError } = await supabase
-      .from("estimates_normalized")
-      .insert(estimates);
+    const { error: ingestError } = await supabase.from("estimates_normalized").insert(estimates);
 
     if (ingestError) {
       throw new Error(`Failed to ingest estimates: ${ingestError.message}`);
@@ -186,14 +186,11 @@ async function runSmokeTest() {
     console.log(`✅ Ingested ${estimates.length} estimates\n`);
 
     // Update source status
-    await supabase
-      .from("sources")
-      .update({ status: "ingested" })
-      .eq("id", source_id);
+    await supabase.from("sources").update({ status: "ingested" }).eq("id", source_id);
 
     // Step 4: Bucket
     console.log("🗂️  Step 4: Bucketing estimates...");
-    
+
     if (!SUPABASE_URL) {
       console.log("   Skipping bucket step (no SUPABASE_URL)\n");
     } else {
@@ -217,12 +214,12 @@ async function runSmokeTest() {
 
     // Step 5: Generate snapshot
     console.log("📸 Step 5: Generating snapshot...");
-    
+
     if (!SUPABASE_URL) {
       console.error("❌ Cannot generate snapshot without SUPABASE_URL");
       process.exit(1);
     }
-    
+
     const snapshotResponse = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/api/snapshot`, {
       method: "POST",
       headers: {
@@ -239,10 +236,10 @@ async function runSmokeTest() {
       console.log("⚠️  Smoke test incomplete - API routes not accessible");
       console.log("   This is expected in development mode");
       console.log("   To test fully, run: npm run dev\n");
-      
+
       // Cleanup
       await supabase.from("sources").delete().eq("id", source_id);
-      
+
       return;
     }
 
@@ -253,7 +250,7 @@ async function runSmokeTest() {
 
     // Step 6: Validate schema
     console.log("✔️  Step 6: Validating SnapshotResult schema...");
-    
+
     const { data: snapshot, error: fetchError } = await supabase
       .from("snapshots")
       .select("result")
@@ -291,7 +288,6 @@ async function runSmokeTest() {
     await supabase.from("estimate_buckets").delete().eq("source_id", source_id);
     await supabase.from("sources").delete().eq("id", source_id);
     console.log("✅ Cleanup complete\n");
-
   } catch (error) {
     console.error("\n❌ Smoke test FAILED:");
     console.error(error instanceof Error ? error.message : "Unknown error");

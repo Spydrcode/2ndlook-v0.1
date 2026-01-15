@@ -2,29 +2,21 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  type Tool,
-} from "@modelcontextprotocol/sdk/types.js";
+import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
 import { createClient } from "@supabase/supabase-js";
-import type {
-  EstimateBucket,
-  Snapshot,
-  Source,
-  SnapshotResult,
-} from "./types.js";
+
+import type { EstimateBucket, SnapshotResult } from "./types.js";
 
 const MEANINGFUL_ESTIMATE_STATUSES = ["sent", "accepted", "converted"];
 
 /**
  * 2ndlook MCP Server
- * 
+ *
  * Provides safe, scoped tools for the orchestrator/agent:
  * - Reading bucketed aggregates (no raw estimates)
  * - Writing snapshot results
  * - Listing user sources/snapshots
- * 
+ *
  * SAFETY RULES:
  * 1. Never exposes raw estimate rows
  * 2. All access scoped to installation_id
@@ -38,9 +30,7 @@ function getSupabaseClient() {
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error(
-      "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required"
-    );
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required");
   }
 
   return createClient(supabaseUrl, supabaseServiceKey, {
@@ -56,7 +46,7 @@ const TOOLS: Tool[] = [
   {
     name: "get_bucketed_aggregates",
     description:
-      "Get bucketed aggregates for a source (no raw estimates). Returns weekly volume, price distribution, and decision latency buckets.",
+      "Get bucketed aggregates for a source (no raw estimates). Returns weekly volume, price distribution, job type distribution, and decision latency buckets.",
     inputSchema: {
       type: "object",
       properties: {
@@ -74,8 +64,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "write_snapshot_result",
-    description:
-      "Write a SnapshotResult to the database. Updates existing snapshot with result payload.",
+    description: "Write a SnapshotResult to the database. Updates existing snapshot with result payload.",
     inputSchema: {
       type: "object",
       properties: {
@@ -97,8 +86,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "list_snapshots",
-    description:
-      "List snapshots for a user. Returns metadata only (no full result payload).",
+    description: "List snapshots for a user. Returns metadata only (no full result payload).",
     inputSchema: {
       type: "object",
       properties: {
@@ -117,8 +105,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "list_sources",
-    description:
-      "List sources for a user. Returns source metadata with status.",
+    description: "List sources for a user. Returns source metadata with status.",
     inputSchema: {
       type: "object",
       properties: {
@@ -138,10 +125,7 @@ const TOOLS: Tool[] = [
 ];
 
 // Tool handlers
-async function handleGetBucketedAggregates(args: {
-  installation_id: string;
-  source_id: string;
-}) {
+async function handleGetBucketedAggregates(args: { installation_id: string; source_id: string }) {
   const supabase = getSupabaseClient();
 
   // Verify source ownership
@@ -217,6 +201,7 @@ async function handleGetBucketedAggregates(args: {
       { band: "8-21d", count: typedBucket.latency_band_8_21 },
       { band: "22+d", count: typedBucket.latency_band_22_plus },
     ],
+    job_type_distribution: typedBucket.job_type_distribution || [],
   };
 
   // Add invoice signals if available (optional)
@@ -270,9 +255,7 @@ async function handleWriteSnapshotResult(args: {
     .single();
 
   if (snapshotError || !snapshot) {
-    throw new Error(
-      `Snapshot not found or access denied: ${args.snapshot_id}`
-    );
+    throw new Error(`Snapshot not found or access denied: ${args.snapshot_id}`);
   }
 
   // Update snapshot with result
@@ -358,7 +341,7 @@ async function main() {
       capabilities: {
         tools: {},
       },
-    }
+    },
   );
 
   // List available tools
@@ -373,9 +356,7 @@ async function main() {
 
       switch (name) {
         case "get_bucketed_aggregates": {
-          const result = await handleGetBucketedAggregates(
-            args as { installation_id: string; source_id: string }
-          );
+          const result = await handleGetBucketedAggregates(args as { installation_id: string; source_id: string });
           return {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
           };
@@ -387,7 +368,7 @@ async function main() {
               installation_id: string;
               snapshot_id: string;
               result_json: SnapshotResult;
-            }
+            },
           );
           return {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -395,18 +376,14 @@ async function main() {
         }
 
         case "list_snapshots": {
-          const result = await handleListSnapshots(
-            args as { installation_id: string; limit?: number }
-          );
+          const result = await handleListSnapshots(args as { installation_id: string; limit?: number });
           return {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
           };
         }
 
         case "list_sources": {
-          const result = await handleListSources(
-            args as { installation_id: string; limit?: number }
-          );
+          const result = await handleListSources(args as { installation_id: string; limit?: number });
           return {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
           };
@@ -416,8 +393,7 @@ async function main() {
           throw new Error(`Unknown tool: ${name}`);
       }
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       return {
         content: [{ type: "text", text: `Error: ${errorMessage}` }],
         isError: true,

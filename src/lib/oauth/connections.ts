@@ -1,7 +1,8 @@
 import "server-only";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { decrypt, encrypt } from "@/lib/security/crypto";
+
 import type { OAuthProviderTool } from "@/lib/oauth/providers";
+import { decrypt, encrypt } from "@/lib/security/crypto";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface OAuthConnection {
   installation_id: string;
@@ -25,9 +26,7 @@ function safeDecrypt(value: string): string {
   try {
     return decrypt(value);
   } catch (error) {
-    throw new TokenDecryptError(
-      error instanceof Error ? error.message : "token_decrypt_failed"
-    );
+    throw new TokenDecryptError(error instanceof Error ? error.message : "token_decrypt_failed");
   }
 }
 
@@ -57,7 +56,7 @@ export async function upsertConnection(params: {
       metadata: params.metadata ?? null,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "installation_id,provider" }
+    { onConflict: "installation_id,provider" },
   );
 
   if (error) {
@@ -67,14 +66,14 @@ export async function upsertConnection(params: {
 
 export async function getConnection(
   installationId: string,
-  provider: OAuthProviderTool | "jobber"
+  provider: OAuthProviderTool | "jobber",
 ): Promise<OAuthConnection | null> {
   const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from("oauth_connections")
     .select(
-      "installation_id, provider, access_token_enc, refresh_token_enc, token_expires_at, scopes, external_account_id, metadata"
+      "installation_id, provider, access_token_enc, refresh_token_enc, token_expires_at, scopes, external_account_id, metadata",
     )
     .eq("installation_id", installationId)
     .eq("provider", provider)
@@ -102,7 +101,7 @@ export async function getConnection(
 
 export async function requireConnection(
   installationId: string,
-  provider: OAuthProviderTool | "jobber"
+  provider: OAuthProviderTool | "jobber",
 ): Promise<OAuthConnection> {
   const connection = await getConnection(installationId, provider);
   if (!connection) {
@@ -113,7 +112,7 @@ export async function requireConnection(
 
 export async function disconnectConnection(
   installationId: string,
-  provider: OAuthProviderTool | "jobber"
+  provider: OAuthProviderTool | "jobber",
 ): Promise<void> {
   const supabase = createAdminClient();
   const { error } = await supabase
@@ -131,9 +130,7 @@ export async function refreshIfNeeded(): Promise<never> {
   throw new Error("oauth_refresh_not_implemented");
 }
 
-export async function listConnectionStatuses(
-  installationId: string
-): Promise<
+export async function listConnectionStatuses(installationId: string): Promise<
   Array<{
     provider: string;
     status: "connected" | "reconnect_required";
@@ -147,9 +144,7 @@ export async function listConnectionStatuses(
 
   const { data, error } = await supabase
     .from("oauth_connections")
-    .select(
-      "provider, access_token_enc, refresh_token_enc, token_expires_at, external_account_id, updated_at"
-    )
+    .select("provider, access_token_enc, refresh_token_enc, token_expires_at, external_account_id, updated_at")
     .eq("installation_id", installationId);
 
   if (error || !data) {

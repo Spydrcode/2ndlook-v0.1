@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { type NextRequest, NextResponse } from "next/server";
+
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,10 +12,7 @@ export async function POST(request: NextRequest) {
     const { source_type, source_name } = body;
 
     if (!source_type || !source_name) {
-      return NextResponse.json(
-        { error: "source_type and source_name are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "source_type and source_name are required" }, { status: 400 });
     }
 
     const { data: source, error } = await supabase
@@ -35,11 +33,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ source_id: source.id }, { status: 201 });
   } catch (error) {
     console.error("Source creation error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-
-

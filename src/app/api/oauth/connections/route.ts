@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+
 import { getInstallationId } from "@/lib/installations/cookie";
 import { listConnectionStatuses } from "@/lib/oauth/connections";
 

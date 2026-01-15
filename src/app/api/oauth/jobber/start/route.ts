@@ -1,9 +1,11 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
-import { getConnection } from "@/lib/oauth/connections";
 import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
-import { randomBytes, randomUUID } from "crypto";
+import { getConnection } from "@/lib/oauth/connections";
+
+import { randomBytes, randomUUID } from "node:crypto";
 export const runtime = "nodejs";
 
 /**
@@ -12,8 +14,7 @@ export const runtime = "nodejs";
  * Uses installation_id instead of user authentication
  */
 export async function GET(request: NextRequest) {
-  const appUrl =
-    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+  const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
   const force = request.nextUrl.searchParams.get("force") === "1";
   try {
     // Get or create installation_id (no login required)
@@ -28,17 +29,13 @@ export async function GET(request: NextRequest) {
 
     if (!clientId || !redirectUri) {
       console.error("Missing Jobber OAuth configuration");
-      return NextResponse.redirect(
-        new URL("/dashboard/connect?error=oauth_config_missing", appUrl)
-      );
+      return NextResponse.redirect(new URL("/dashboard/connect?error=oauth_config_missing", appUrl));
     }
 
     if (!force) {
       try {
         const connection = await getConnection(installationId, "jobber");
-        const expiresAt = connection?.token_expires_at
-          ? new Date(connection.token_expires_at)
-          : null;
+        const expiresAt = connection?.token_expires_at ? new Date(connection.token_expires_at) : null;
         const isExpired = expiresAt ? expiresAt.getTime() <= Date.now() : false;
         const isConnected = !!connection?.access_token && !isExpired;
 
@@ -129,10 +126,6 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("Jobber OAuth start error:", error);
-    return NextResponse.redirect(
-      new URL("/dashboard/connect?error=oauth_start_failed", appUrl)
-    );
+    return NextResponse.redirect(new URL("/dashboard/connect?error=oauth_start_failed", appUrl));
   }
 }
-
-

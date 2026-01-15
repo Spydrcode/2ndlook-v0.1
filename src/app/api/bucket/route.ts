@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getOrCreateInstallationId } from "@/lib/installations/cookie";
-import type { BucketRequest, BucketResponse, EstimateNormalized } from "@/types/2ndlook";
+import { type NextRequest, NextResponse } from "next/server";
+
 import { MEANINGFUL_ESTIMATE_STATUSES } from "@/lib/ingest/statuses";
+import { getOrCreateInstallationId } from "@/lib/installations/cookie";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { BucketRequest, BucketResponse, EstimateNormalized } from "@/types/2ndlook";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,10 +14,7 @@ export async function POST(request: NextRequest) {
     const { source_id } = body;
 
     if (!source_id) {
-      return NextResponse.json(
-        { error: "source_id is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "source_id is required" }, { status: 400 });
     }
 
     // Verify source ownership and status
@@ -31,10 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (source.status !== "ingested" && source.status !== "insufficient_data") {
-      return NextResponse.json(
-        { error: "Source must be ingested before bucketing" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Source must be ingested before bucketing" }, { status: 400 });
     }
 
     // Fetch normalized estimates
@@ -44,10 +39,7 @@ export async function POST(request: NextRequest) {
       .eq("source_id", source_id);
 
     if (estimatesError || !estimates || estimates.length === 0) {
-      return NextResponse.json(
-        { error: "No estimates found for source" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No estimates found for source" }, { status: 400 });
     }
 
     // Apply bucketing rules
@@ -62,19 +54,14 @@ export async function POST(request: NextRequest) {
 
     if (existingBucket) {
       // Update existing
-      const { error: updateError } = await supabase
-        .from("estimate_buckets")
-        .update(buckets)
-        .eq("source_id", source_id);
+      const { error: updateError } = await supabase.from("estimate_buckets").update(buckets).eq("source_id", source_id);
 
       if (updateError) {
         throw new Error(`Failed to update buckets: ${updateError.message}`);
       }
     } else {
       // Insert new
-      const { error: insertError } = await supabase
-        .from("estimate_buckets")
-        .insert({ ...buckets, source_id });
+      const { error: insertError } = await supabase.from("estimate_buckets").insert({ ...buckets, source_id });
 
       if (insertError) {
         throw new Error(`Failed to insert buckets: ${insertError.message}`);
@@ -82,14 +69,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (source.status !== "insufficient_data") {
-      await supabase
-        .from("sources")
-        .update({ status: "bucketed" })
-        .eq("id", source_id);
+      await supabase.from("sources").update({ status: "bucketed" }).eq("id", source_id);
     }
 
-    const statusForResponse =
-      source.status === "insufficient_data" ? "insufficient_data" : "bucketed";
+    const statusForResponse = source.status === "insufficient_data" ? "insufficient_data" : "bucketed";
 
     const response: BucketResponse = {
       source_id,
@@ -102,14 +85,11 @@ export async function POST(request: NextRequest) {
         status: statusForResponse,
         metadata: source.metadata ?? null,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Bucket error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -128,6 +108,7 @@ function bucketEstimates(estimates: EstimateNormalized[]) {
 
   // Weekly volume map
   const weeklyMap = new Map<string, number>();
+  const jobTypeMap = new Map<string, number>();
 
   for (const estimate of estimates) {
     if (!MEANINGFUL_ESTIMATE_STATUSES.includes(estimate.status)) {
@@ -174,12 +155,20 @@ function bucketEstimates(estimates: EstimateNormalized[]) {
     // Weekly volume (ISO week)
     const weekKey = getISOWeek(activityDate);
     weeklyMap.set(weekKey, (weeklyMap.get(weekKey) || 0) + 1);
+
+    // Job type distribution (bucketed, unknown if missing)
+    const jobType = estimate.job_type?.toLowerCase?.() || "unknown";
+    jobTypeMap.set(jobType, (jobTypeMap.get(jobType) || 0) + 1);
   }
 
   // Convert weekly map to array
   const weeklyVolume = Array.from(weeklyMap.entries())
     .map(([week, count]) => ({ week, count }))
     .sort((a, b) => a.week.localeCompare(b.week));
+
+  const jobTypeDistribution = Array.from(jobTypeMap.entries())
+    .map(([job_type, count]) => ({ job_type, count }))
+    .sort((a, b) => b.count - a.count);
 
   return {
     price_band_lt_500: priceBandLt500,
@@ -191,6 +180,7 @@ function bucketEstimates(estimates: EstimateNormalized[]) {
     latency_band_8_21: latencyBand821,
     latency_band_22_plus: latencyBand22Plus,
     weekly_volume: weeklyVolume,
+    job_type_distribution: jobTypeDistribution,
   };
 }
 
@@ -207,5 +197,3 @@ function getISOWeek(date: Date): string {
   const year = target.getFullYear();
   return `${year}-W${String(weekNumber).padStart(2, "0")}`;
 }
-
-

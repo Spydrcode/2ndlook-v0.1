@@ -1,6 +1,6 @@
 import type { UniversalConnector } from "../connector";
-import type { InvoiceCanonicalRow } from "../types";
 import { NotImplementedError } from "../connector";
+import type { InvoiceCanonicalRow } from "../types";
 
 export class WaveInvoiceConnector implements UniversalConnector {
   category = "invoices" as const;

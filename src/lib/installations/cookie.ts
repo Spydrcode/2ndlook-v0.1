@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+
 import { createAdminClient } from "../supabase/admin";
 
 const INSTALLATION_COOKIE_NAME = "installation_id";
@@ -7,7 +8,7 @@ const INSTALLATION_COOKIE_MAX_AGE = 180 * 24 * 60 * 60; // 180 days in seconds
 /**
  * Get or create an installation ID for anonymous user tracking.
  * This enables no-login mode where users are identified by a persistent cookie.
- * 
+ *
  * @returns The installation ID (UUID string)
  */
 export async function getOrCreateInstallationId(): Promise<string> {
@@ -20,11 +21,7 @@ export async function getOrCreateInstallationId(): Promise<string> {
 
   // Create a new installation
   const adminClient = createAdminClient();
-  const { data, error } = await adminClient
-    .from("installations")
-    .insert({})
-    .select("id")
-    .single();
+  const { data, error } = await adminClient.from("installations").insert({}).select("id").single();
 
   if (error || !data) {
     throw new Error(`Failed to create installation: ${error?.message || "Unknown error"}`);

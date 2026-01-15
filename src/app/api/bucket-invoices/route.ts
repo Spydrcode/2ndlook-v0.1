@@ -1,8 +1,9 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
-import type { InvoiceNormalized, InvoiceBucket } from "@/types/2ndlook";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { InvoiceBucket, InvoiceNormalized } from "@/types/2ndlook";
 
 interface BucketInvoicesRequest {
   source_id: string;
@@ -22,10 +23,7 @@ export async function POST(request: NextRequest) {
     const { source_id } = body;
 
     if (!source_id) {
-      return NextResponse.json(
-        { error: "source_id is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "source_id is required" }, { status: 400 });
     }
 
     // Verify source ownership
@@ -46,10 +44,7 @@ export async function POST(request: NextRequest) {
       .eq("source_id", source_id);
 
     if (invoicesError) {
-      return NextResponse.json(
-        { error: "Failed to fetch invoices" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to fetch invoices" }, { status: 500 });
     }
 
     // Fail gracefully if no invoices
@@ -57,7 +52,7 @@ export async function POST(request: NextRequest) {
       console.log(`[Invoice Bucket] No invoices found for source ${source_id} - estimate-only mode`);
       return NextResponse.json(
         { source_id, bucketed: false, message: "No invoices found - estimate-only mode" },
-        { status: 200 }
+        { status: 200 },
       );
     }
 
@@ -67,9 +62,7 @@ export async function POST(request: NextRequest) {
       .select("estimate_id, closed_at")
       .eq("source_id", source_id);
 
-    const estimateMap = new Map(
-      (estimates || []).map((est) => [est.estimate_id, est.closed_at ?? null])
-    );
+    const estimateMap = new Map((estimates || []).map((est) => [est.estimate_id, est.closed_at ?? null]));
 
     // Apply bucketing rules
     const buckets = bucketInvoices(invoices as InvoiceNormalized[], estimateMap);
@@ -83,28 +76,17 @@ export async function POST(request: NextRequest) {
 
     if (existingBucket) {
       // Update existing bucket
-      const { error: updateError } = await supabase
-        .from("invoice_buckets")
-        .update(buckets)
-        .eq("source_id", source_id);
+      const { error: updateError } = await supabase.from("invoice_buckets").update(buckets).eq("source_id", source_id);
 
       if (updateError) {
-        return NextResponse.json(
-          { error: "Failed to update invoice buckets" },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: "Failed to update invoice buckets" }, { status: 500 });
       }
     } else {
       // Insert new bucket
-      const { error: insertError } = await supabase
-        .from("invoice_buckets")
-        .insert({ source_id, ...buckets });
+      const { error: insertError } = await supabase.from("invoice_buckets").insert({ source_id, ...buckets });
 
       if (insertError) {
-        return NextResponse.json(
-          { error: "Failed to create invoice buckets" },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: "Failed to create invoice buckets" }, { status: 500 });
       }
     }
 
@@ -116,10 +98,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("Invoice bucket error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -129,7 +108,7 @@ export async function POST(request: NextRequest) {
  */
 function bucketInvoices(
   invoices: InvoiceNormalized[],
-  estimateMap: Map<string, string | null>
+  estimateMap: Map<string, string | null>,
 ): Omit<InvoiceBucket, "id" | "source_id" | "created_at"> {
   // Price band counters (same bands as estimates)
   let priceBandLt500 = 0;
@@ -177,9 +156,7 @@ function bucketInvoices(
       const estimateClosedAtStr = estimateMap.get(invoice.linked_estimate_id);
       if (estimateClosedAtStr) {
         const estimateClosedAt = new Date(estimateClosedAtStr);
-        const daysDiff = Math.floor(
-          (invoiceDate.getTime() - estimateClosedAt.getTime()) / (1000 * 60 * 60 * 24)
-        );
+        const daysDiff = Math.floor((invoiceDate.getTime() - estimateClosedAt.getTime()) / (1000 * 60 * 60 * 24));
 
         if (daysDiff <= 7) {
           timeToInvoice07++;
@@ -219,7 +196,6 @@ function bucketInvoices(
       case "partial":
         statusPartial++;
         break;
-      case "unknown":
       default:
         statusUnknown++;
         break;
@@ -270,5 +246,3 @@ function getISOWeek(date: Date): number {
   const diff = target.getTime() - firstThursday.getTime();
   return 1 + Math.floor(diff / 604800000);
 }
-
-

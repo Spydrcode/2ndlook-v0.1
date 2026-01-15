@@ -7,14 +7,7 @@ export type ConnectorCategory = "estimates" | "invoices";
 
 export type EstimateConnectorTool = "jobber" | "housecall-pro";
 
-export type InvoiceConnectorTool =
-  | "stripe"
-  | "square"
-  | "paypal"
-  | "wave"
-  | "zoho-invoice"
-  | "paymo"
-  | "quickbooks";
+export type InvoiceConnectorTool = "stripe" | "square" | "paypal" | "wave" | "zoho-invoice" | "paymo" | "quickbooks";
 
 export type ConnectorTool = EstimateConnectorTool | InvoiceConnectorTool;
 
@@ -28,15 +21,7 @@ export interface EstimateCanonicalRow {
   closed_at?: string | null; // ISO 8601
   updated_at?: string | null; // ISO 8601
   amount: number;
-  status:
-    | "draft"
-    | "sent"
-    | "accepted"
-    | "declined"
-    | "expired"
-    | "cancelled"
-    | "converted"
-    | "unknown";
+  status: "draft" | "sent" | "accepted" | "declined" | "expired" | "cancelled" | "converted" | "unknown";
   job_type?: string | null;
 }
 
@@ -49,16 +34,7 @@ export interface InvoiceCanonicalRow {
   invoice_id: string; // Opaque identifier
   invoice_date: string; // ISO 8601
   invoice_total: number;
-  invoice_status:
-    | "draft"
-    | "sent"
-    | "void"
-    | "paid"
-    | "unpaid"
-    | "overdue"
-    | "refunded"
-    | "partial"
-    | "unknown";
+  invoice_status: "draft" | "sent" | "void" | "paid" | "unpaid" | "overdue" | "refunded" | "partial" | "unknown";
   linked_estimate_id?: string | null; // Optional link to estimate
 }
 

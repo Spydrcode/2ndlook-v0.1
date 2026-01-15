@@ -3,8 +3,8 @@
  * Stores only signal fields (ids, dates, statuses, totals, client links).
  */
 
-import type { JobNormalized, JobStatus } from "@/types/2ndlook";
 import { MAX_JOB_RECORDS, WINDOW_DAYS } from "@/lib/config/limits";
+import type { JobNormalized, JobStatus } from "@/types/2ndlook";
 
 export interface JobRowInput {
   job_id: string;
@@ -52,7 +52,7 @@ export async function normalizeJobsAndStore(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   sourceId: string,
-  rows: JobRowInput[]
+  rows: JobRowInput[],
 ): Promise<NormalizeJobsResult> {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - WINDOW_DAYS);

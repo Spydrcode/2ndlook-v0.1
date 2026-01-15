@@ -1,12 +1,12 @@
 /**
  * Snapshot telemetry logger
  * Tracks snapshot generation mode decisions and fallbacks
- * 
+ *
  * SAFETY:
  * - No bucket payloads logged
  * - Only high-level metadata
  * - Writes to stdout as JSON lines (works with any logging infrastructure)
- * 
+ *
  * Used for:
  * - Monitoring orchestrated vs deterministic usage
  * - Calculating fallback rate for auto mode
@@ -39,22 +39,24 @@ export const SnapshotErrorCodes = {
 /**
  * Log a snapshot generation event
  * Writes JSON line to stdout (console.log)
- * 
+ *
  * @param entry - Snapshot log entry
  */
 export function logSnapshotEvent(entry: SnapshotLogEntry): void {
   // Write as JSON line to stdout
   // This works with any logging infrastructure (CloudWatch, Datadog, etc.)
-  console.log(JSON.stringify({
-    ...entry,
-    _type: "snapshot_telemetry",
-  }));
+  console.log(
+    JSON.stringify({
+      ...entry,
+      _type: "snapshot_telemetry",
+    }),
+  );
 }
 
 /**
  * In-memory fallback rate tracker
  * Used for auto mode decision
- * 
+ *
  * Since we can't persist to DB without schema changes,
  * this tracks per-process instance only.
  */
@@ -68,7 +70,7 @@ class FallbackRateTracker {
    */
   recordEvent(fallbackUsed: boolean): void {
     const now = Date.now();
-    
+
     this.events.push({
       timestamp: now,
       fallback: fallbackUsed,
@@ -81,7 +83,7 @@ class FallbackRateTracker {
 
     // Remove events outside time window
     const cutoff = now - this.windowMs;
-    this.events = this.events.filter(e => e.timestamp > cutoff);
+    this.events = this.events.filter((e) => e.timestamp > cutoff);
   }
 
   /**
@@ -94,7 +96,7 @@ class FallbackRateTracker {
       return null;
     }
 
-    const fallbackCount = this.events.filter(e => e.fallback).length;
+    const fallbackCount = this.events.filter((e) => e.fallback).length;
     return fallbackCount / this.events.length;
   }
 
@@ -126,7 +128,7 @@ export function recordSnapshotMetrics(fallbackUsed: boolean): void {
 /**
  * Get current fallback rate
  * Returns null if insufficient data
- * 
+ *
  * Used by auto mode to decide whether to use orchestrated
  */
 export function getCurrentFallbackRate(): number | null {
