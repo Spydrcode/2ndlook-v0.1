@@ -11,9 +11,9 @@ const JOBBER_GQL_VERSION = process.env.JOBBER_GQL_VERSION ?? "2025-04-16";
 export interface JobberQuote {
   id: string;
   createdAt: string;
-  closedAt: string | null;
-  total: { amount: string; currency: string };
-  status: string;
+  subject?: string | null;
+  totalAmount: { value: string; currency: string };
+  quoteStatus: string;
 }
 
 interface JobberInvoice {
@@ -161,19 +161,19 @@ export async function fetchEstimates(
       const query = `
         query GetQuotes($dateFilter: ${type}) {
           quotes(
-            filter: { createdAfter: $dateFilter }
+            filter: { createdAt: { after: $dateFilter } }
             first: 100
           ) {
             edges {
               node {
                 id
                 createdAt
-                closedAt
-                total {
-                  amount
+                subject
+                totalAmount {
+                  value
                   currency
                 }
-                status
+                quoteStatus
               }
             }
           }
@@ -217,9 +217,9 @@ export async function fetchEstimates(
     const estimateRows: CSVEstimateRow[] = quotes.map((quote) => ({
       estimate_id: quote.id,
       created_at: quote.createdAt,
-      closed_at: quote.closedAt,
-      amount: quote.total.amount,
-      status: normalizeJobberStatus(quote.status),
+      closed_at: null, // Not available in current Jobber API
+      amount: quote.totalAmount.value,
+      status: normalizeJobberStatus(quote.quoteStatus),
       job_type: undefined, // Jobber doesn't provide job_type in field diet
     }));
 
