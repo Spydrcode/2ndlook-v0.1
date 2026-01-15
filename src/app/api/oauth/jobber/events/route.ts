@@ -12,6 +12,7 @@ export async function GET(_request: NextRequest) {
       installation_id: null,
       last_sync_status: null,
       last_error_message: null,
+      last_error_details: null,
       last_event_id: null,
       last_event_phase: null,
       last_event_at: null,
@@ -31,6 +32,7 @@ export async function GET(_request: NextRequest) {
       installation_id: installationId,
       last_sync_status: null,
       last_error_message: null,
+      last_error_details: null,
       last_event_id: null,
       last_event_phase: null,
       last_event_at: null,
@@ -68,11 +70,13 @@ export async function GET(_request: NextRequest) {
     (lastErrorDetails && typeof lastErrorDetails.error === "string" && lastErrorDetails.error) ||
     (lastErrorDetails && typeof lastErrorDetails.message === "string" && lastErrorDetails.message) ||
     null;
+  const lastErrorDetailsFull = lastErrorEvent?.details || null;
 
   return NextResponse.json({
     installation_id: installationId,
     last_sync_status: lastSyncStatus,
     last_error_message: lastErrorMessage,
+    last_error_details: lastErrorDetailsFull,
     last_event_id:
       lastErrorEvent?.event_id || lastSyncEvent?.event_id || lastEvent?.event_id || null,
     last_event_phase: lastEvent?.phase ?? null,

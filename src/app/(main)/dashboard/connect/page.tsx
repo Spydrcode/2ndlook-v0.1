@@ -51,9 +51,11 @@ export default function ConnectPage() {
   const [jobberEvents, setJobberEvents] = useState<{
     last_sync_status: "success" | "fail" | null;
     last_error_message: string | null;
+    last_error_details: Record<string, unknown> | null;
     last_event_id: string | null;
   } | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [showDebugDetails, setShowDebugDetails] = useState(false);
 
   useEffect(() => {
     const errorParam = searchParams.get("error");
@@ -137,6 +139,7 @@ export default function ConnectPage() {
         setJobberEvents({
           last_sync_status: data?.last_sync_status ?? null,
           last_error_message: data?.last_error_message ?? null,
+          last_error_details: data?.last_error_details ?? null,
           last_event_id: data?.last_event_id ?? null,
         });
       } catch {
@@ -190,6 +193,8 @@ export default function ConnectPage() {
       .sort((a, b) => rank(a.tool) - rank(b.tool));
   }, []);
 
+  const eventIdFromUrl = searchParams.get("event_id");
+
   const getErrorMessage = (errorCode: string): string => {
     const count = searchParams.get("count");
     const required = searchParams.get("required") || "25";
@@ -207,7 +212,8 @@ export default function ConnectPage() {
       jobber_token_exchange_failed: "Failed to exchange authorization code for tokens. Please try again.",
       jobber_invalid_tokens: "Invalid tokens received from Jobber. Please try again.",
       jobber_db_error: "Failed to save connection details. Please try again.",
-      jobber_ingest_failed: "Failed to fetch your estimates from Jobber. Please try again.",
+      jobber_ingest_failed:
+        "We couldn't pull your Jobber data (quotes/invoices/jobs/clients). Please try again. If it keeps failing, open Debug Details below.",
       jobber_min_estimates: `Minimum 25 meaningful estimates required. Jobber returned fewer than 25 sent/accepted/converted estimates from the last ${WINDOW_DAYS} days.`,
       jobber_insufficient_data: `Connected to Jobber, but we found only ${count || 0} meaningful estimates. 2ndlook needs at least ${required} sent/accepted/converted estimates for a full snapshot. Create/send more estimates in Jobber, then reconnect.`,
       jobber_config_error: "OAuth configuration error. Please contact support.",
@@ -219,9 +225,10 @@ export default function ConnectPage() {
   };
 
   const handleCopyEventId = async () => {
-    if (!jobberEvents?.last_event_id) return;
+    const toCopy = eventIdFromUrl || jobberEvents?.last_event_id;
+    if (!toCopy) return;
     try {
-      await navigator.clipboard.writeText(jobberEvents.last_event_id);
+      await navigator.clipboard.writeText(toCopy);
     } catch {
       // Ignore clipboard errors
     }
@@ -245,6 +252,12 @@ export default function ConnectPage() {
       console.error("Failed to disconnect:", error);
     }
   };
+
+  const isJobberIngestFailed = error === "jobber_ingest_failed";
+  const debugDetails =
+    jobberEvents?.last_error_details && Object.keys(jobberEvents.last_error_details).length > 0
+      ? jobberEvents.last_error_details
+      : null;
 
   return (
     <div className="flex flex-1 flex-col gap-8 p-6">
@@ -280,6 +293,41 @@ export default function ConnectPage() {
             </Button>
           </AlertDescription>
         </Alert>
+      )}
+
+      {isJobberIngestFailed && (
+        <div className="rounded-md border bg-muted/40 p-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="space-y-1 text-sm">
+              <p className="font-medium">Debug Details</p>
+              <p className="text-xs text-muted-foreground">
+                Use this to look up the exact failure (event id + request details).
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setShowDebugDetails((prev) => !prev)}>
+              {showDebugDetails ? "Hide" : "Show"}
+            </Button>
+          </div>
+          {showDebugDetails && (
+            <div className="mt-3 space-y-2 text-xs">
+              <div className="rounded-sm bg-muted p-3">
+                <div>Event ID (from URL): {eventIdFromUrl || "Unavailable"}</div>
+                <div>Event ID (latest): {jobberEvents?.last_event_id || "Unavailable"}</div>
+                <div>Last error message: {jobberEvents?.last_error_message || "Unavailable"}</div>
+              </div>
+              <div className="rounded-sm bg-muted p-3">
+                <p className="mb-2 font-medium">Last error details</p>
+                {debugDetails ? (
+                  <pre className="whitespace-pre-wrap break-words text-[11px] leading-relaxed">
+                    {JSON.stringify(debugDetails, null, 2)}
+                  </pre>
+                ) : (
+                  <p>No debug details available yet.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -331,13 +379,13 @@ export default function ConnectPage() {
                       Last error: {jobberEvents?.last_error_message || "None"}
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span>Event ID: {jobberEvents?.last_event_id || "N/A"}</span>
+                      <span>Event ID: {eventIdFromUrl || jobberEvents?.last_event_id || "N/A"}</span>
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
                         onClick={handleCopyEventId}
-                        disabled={!jobberEvents?.last_event_id}
+                        disabled={!eventIdFromUrl && !jobberEvents?.last_event_id}
                       >
                         Copy
                       </Button>

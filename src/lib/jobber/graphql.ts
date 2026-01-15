@@ -6,6 +6,8 @@ import type { ClientRowInput } from "@/lib/ingest/normalize-clients";
 import { WINDOW_DAYS } from "@/lib/config/limits";
 import { normalizeEstimateStatus } from "@/lib/ingest/statuses";
 
+const JOBBER_GQL_VERSION = process.env.JOBBER_GQL_VERSION ?? "2025-04-16";
+
 export interface JobberQuote {
   id: string;
   createdAt: string;
@@ -42,6 +44,20 @@ interface JobberClient {
   isLead?: boolean | null;
 }
 
+export class JobberGraphQLError extends Error {
+  status?: number;
+  statusText?: string;
+  requestId?: string | null;
+  graphqlErrors?: unknown;
+  responseText?: string;
+
+  constructor(message: string, init?: Partial<JobberGraphQLError>) {
+    super(message);
+    this.name = "JobberGraphQLError";
+    Object.assign(this, init);
+  }
+}
+
 async function jobberGraphQLRequest<T>({
   installationId,
   query,
@@ -63,7 +79,7 @@ async function jobberGraphQLRequest<T>({
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
-      "X-JOBBER-GRAPHQL-VERSION": "2023-03-09",
+      "X-JOBBER-GRAPHQL-VERSION": JOBBER_GQL_VERSION,
     },
     body: JSON.stringify({
       query,
@@ -71,6 +87,10 @@ async function jobberGraphQLRequest<T>({
     }),
   });
 
+  const requestId =
+    response.headers.get("x-request-id") ||
+    response.headers.get("x-amzn-requestid") ||
+    response.headers.get("cf-ray");
   const text = await response.text();
   let json: { data?: T; errors?: unknown };
   try {
@@ -81,13 +101,36 @@ async function jobberGraphQLRequest<T>({
   }
 
   if (!response.ok) {
-    console.error("[JOBBER GRAPHQL] API error:", response.status, text);
-    throw new Error(`Jobber API error: ${response.status}`);
+    console.error("[JOBBER GRAPHQL] Non-OK response", {
+      status: response.status,
+      statusText: response.statusText,
+      requestId,
+      body: text?.slice(0, 2000),
+    });
+    throw new JobberGraphQLError(
+      `Jobber API error: ${response.status} ${response.statusText} :: ${text?.slice(0, 200)}`,
+      {
+        status: response.status,
+        statusText: response.statusText,
+        requestId,
+        responseText: text,
+      },
+    );
   }
 
   if (json.errors) {
-    console.error("[JOBBER GRAPHQL] GraphQL errors:", JSON.stringify(json.errors, null, 2));
-    throw new Error("GraphQL query failed");
+    console.error("[JOBBER GRAPHQL] GraphQL errors:", JSON.stringify(json.errors, null, 2), {
+      status: response.status,
+      requestId,
+      responseText: text,
+    });
+    throw new JobberGraphQLError("Jobber GraphQL returned errors", {
+      status: response.status,
+      statusText: response.statusText,
+      requestId,
+      graphqlErrors: json.errors,
+      responseText: text,
+    });
   }
 
   if (!json.data) {
@@ -111,37 +154,47 @@ export async function fetchEstimates(
     // Calculate window start
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - WINDOW_DAYS);
-    const dateFilter = ninetyDaysAgo.toISOString().split("T")[0];
+    const iso = ninetyDaysAgo.toISOString();
+    const ymd = iso.split("T")[0];
 
-    // Try edges { node } structure first (most common in GraphQL pagination)
-    const query = `
-      query GetQuotes($dateFilter: Date!) {
-        quotes(
-          filter: { createdAfter: $dateFilter }
-          first: 100
-        ) {
-          edges {
-            node {
-              id
-              createdAt
-              closedAt
-              total {
-                amount
-                currency
+    const fetchQuotesWithFilter = async (dateFilter: string, type: "Date!" | "DateTime!") => {
+      const query = `
+        query GetQuotes($dateFilter: ${type}) {
+          quotes(
+            filter: { createdAfter: $dateFilter }
+            first: 100
+          ) {
+            edges {
+              node {
+                id
+                createdAt
+                closedAt
+                total {
+                  amount
+                  currency
+                }
+                status
               }
-              status
             }
           }
         }
-      }
-    `;
+      `;
 
-    console.log("[JOBBER GRAPHQL] Fetching quotes from Jobber API...");
-    const result = await jobberGraphQLRequest<{ quotes?: any }>({
-      installationId,
-      query,
-      variables: { dateFilter },
-    });
+      console.log("[JOBBER GRAPHQL] Fetching quotes from Jobber API...");
+      return jobberGraphQLRequest<{ quotes?: any }>({
+        installationId,
+        query,
+        variables: { dateFilter },
+      });
+    };
+
+    let result: { quotes?: any };
+    try {
+      result = await fetchQuotesWithFilter(iso, "DateTime!");
+    } catch (err) {
+      console.warn("[JOBBER GRAPHQL] DateTime filter failed, retrying with Date");
+      result = await fetchQuotesWithFilter(ymd, "Date!");
+    }
 
     // Try both edges.node and nodes structures
     let quotes: JobberQuote[] = [];

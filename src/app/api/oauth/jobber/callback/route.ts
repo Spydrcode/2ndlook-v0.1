@@ -20,8 +20,12 @@ export async function GET(request: NextRequest) {
     process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
   
   // Helper to create error response with cookie cleanup
-  const errorResponse = (errorCode: string) => {
-    const response = NextResponse.redirect(`${appUrl}/dashboard/connect?error=${errorCode}`);
+  const errorResponse = (errorCode: string, eventId?: string) => {
+    const url = new URL(`${appUrl}/dashboard/connect`);
+    url.searchParams.set("error", errorCode);
+    if (eventId) url.searchParams.set("event_id", eventId);
+
+    const response = NextResponse.redirect(url.toString());
     response.cookies.delete("jobber_oauth_state");
     response.cookies.delete("jobber_oauth_installation");
     response.cookies.delete("jobber_event_id");
@@ -196,7 +200,7 @@ export async function GET(request: NextRequest) {
     if (!ingestionResult.success) {
       console.error("[JOBBER CALLBACK] Ingestion failed:", ingestionResult.error);
 
-      return errorResponse("jobber_ingest_failed");
+      return errorResponse("jobber_ingest_failed", eventId);
     }
 
     const sourceId = ingestionResult.source_id;

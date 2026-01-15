@@ -93,43 +93,64 @@ export async function ingestJobberEstimates(
       console.log(`[JOBBER INGEST] Normalization complete: ${kept} kept, ${rejected} rejected`);
 
       // Fetch and normalize invoices
-      console.log("[JOBBER INGEST] Fetching invoices from Jobber...");
-      const invoiceRows = await fetchInvoices(installationId);
-      console.log(`[JOBBER INGEST] Fetched ${invoiceRows.length} invoices from Jobber`);
-      const { kept: keptInvoices, rejected: rejectedInvoices } = await normalizeInvoicesAndStore(
-        supabase,
-        sourceId,
-        invoiceRows
-      );
-      console.log(
-        `[JOBBER INGEST] Invoice normalization complete: ${keptInvoices} kept, ${rejectedInvoices} rejected`
-      );
+      let keptInvoices = 0;
+      let rejectedInvoices = 0;
+      try {
+        console.log("[JOBBER INGEST] Fetching invoices from Jobber...");
+        const invoiceRows = await fetchInvoices(installationId);
+        console.log(`[JOBBER INGEST] Fetched ${invoiceRows.length} invoices from Jobber`);
+        const result = await normalizeInvoicesAndStore(supabase, sourceId, invoiceRows);
+        keptInvoices = result.kept;
+        rejectedInvoices = result.rejected;
+        console.log(
+          `[JOBBER INGEST] Invoice normalization complete: ${keptInvoices} kept, ${rejectedInvoices} rejected`
+        );
+      } catch (invoiceError) {
+        console.error(
+          "[JOBBER INGEST] Invoice ingest skipped (non-fatal):",
+          invoiceError instanceof Error ? invoiceError.message : invoiceError
+        );
+      }
 
       // Fetch and normalize jobs
-      console.log("[JOBBER INGEST] Fetching jobs from Jobber...");
-      const jobRows = await fetchJobs(installationId);
-      console.log(`[JOBBER INGEST] Fetched ${jobRows.length} jobs from Jobber`);
-      const { kept: keptJobs, rejected: rejectedJobs } = await normalizeJobsAndStore(
-        supabase,
-        sourceId,
-        jobRows
-      );
-      console.log(
-        `[JOBBER INGEST] Job normalization complete: ${keptJobs} kept, ${rejectedJobs} rejected`
-      );
+      let keptJobs = 0;
+      let rejectedJobs = 0;
+      try {
+        console.log("[JOBBER INGEST] Fetching jobs from Jobber...");
+        const jobRows = await fetchJobs(installationId);
+        console.log(`[JOBBER INGEST] Fetched ${jobRows.length} jobs from Jobber`);
+        const result = await normalizeJobsAndStore(supabase, sourceId, jobRows);
+        keptJobs = result.kept;
+        rejectedJobs = result.rejected;
+        console.log(
+          `[JOBBER INGEST] Job normalization complete: ${keptJobs} kept, ${rejectedJobs} rejected`
+        );
+      } catch (jobError) {
+        console.error(
+          "[JOBBER INGEST] Job ingest skipped (non-fatal):",
+          jobError instanceof Error ? jobError.message : jobError
+        );
+      }
 
       // Fetch and normalize clients
-      console.log("[JOBBER INGEST] Fetching clients from Jobber...");
-      const clientRows = await fetchClients(installationId);
-      console.log(`[JOBBER INGEST] Fetched ${clientRows.length} clients from Jobber`);
-      const { kept: keptClients, rejected: rejectedClients } = await normalizeClientsAndStore(
-        supabase,
-        sourceId,
-        clientRows
-      );
-      console.log(
-        `[JOBBER INGEST] Client normalization complete: ${keptClients} kept, ${rejectedClients} rejected`
-      );
+      let keptClients = 0;
+      let rejectedClients = 0;
+      try {
+        console.log("[JOBBER INGEST] Fetching clients from Jobber...");
+        const clientRows = await fetchClients(installationId);
+        console.log(`[JOBBER INGEST] Fetched ${clientRows.length} clients from Jobber`);
+        const result = await normalizeClientsAndStore(supabase, sourceId, clientRows);
+        keptClients = result.kept;
+        rejectedClients = result.rejected;
+        console.log(
+          `[JOBBER INGEST] Client normalization complete: ${keptClients} kept, ${rejectedClients} rejected`
+        );
+      } catch (clientError) {
+        console.error(
+          "[JOBBER INGEST] Client ingest skipped (non-fatal):",
+          clientError instanceof Error ? clientError.message : clientError
+        );
+      }
 
       console.log("[JOBBER INGEST] Updating source status to ingested...");
       await supabase
@@ -191,17 +212,26 @@ export async function ingestJobberEstimates(
         .delete()
         .eq("id", sourceId);
 
+      const err = fetchError as any;
+      const errorDetails = {
+        ok: false,
+        error: err?.message ?? String(fetchError),
+        name: err?.name,
+        stack: err?.stack,
+        status: err?.status,
+        statusText: err?.statusText,
+        requestId: err?.requestId,
+        graphqlErrors: err?.graphqlErrors,
+        responseText: err?.responseText ? String(err.responseText).slice(0, 2000) : undefined,
+      };
+
       if (eventId) {
         try {
           await logJobberConnectionEvent({
             installationId,
             eventId,
             phase: "ingest_error",
-            details: {
-              source_id: sourceId,
-              error:
-                fetchError instanceof Error ? fetchError.message : "Ingestion failed",
-            },
+            details: errorDetails,
           });
         } catch (logError) {
           console.error("Failed to log Jobber ingest error:", logError);
@@ -210,20 +240,31 @@ export async function ingestJobberEstimates(
 
       return {
         success: false,
-        error: fetchError instanceof Error ? fetchError.message : "Ingestion failed",
+        error: errorDetails.error,
       };
     }
   } catch (err) {
     console.error("Unexpected ingestion error:", err);
+    const errorDetails = {
+      ok: false,
+      error: err instanceof Error ? err.message : "Unexpected ingestion error",
+      name: err instanceof Error ? err.name : undefined,
+      stack: err instanceof Error ? err.stack : undefined,
+      status: (err as any)?.status,
+      statusText: (err as any)?.statusText,
+      requestId: (err as any)?.requestId,
+      graphqlErrors: (err as any)?.graphqlErrors,
+      responseText: (err as any)?.responseText
+        ? String((err as any).responseText).slice(0, 2000)
+        : undefined,
+    };
     if (eventId) {
       try {
         await logJobberConnectionEvent({
           installationId,
           eventId,
           phase: "ingest_error",
-          details: {
-            error: err instanceof Error ? err.message : "Unexpected ingestion error",
-          },
+          details: errorDetails,
         });
       } catch (logError) {
         console.error("Failed to log Jobber ingest error:", logError);
@@ -231,7 +272,7 @@ export async function ingestJobberEstimates(
     }
     return {
       success: false,
-      error: "Unexpected error during ingestion",
+      error: errorDetails.error,
     };
   }
 }

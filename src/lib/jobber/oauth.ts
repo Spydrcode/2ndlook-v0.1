@@ -97,7 +97,12 @@ export async function refreshJobberToken(
  * Get valid access token for Jobber API
  * 
  * Fetches current token and refreshes if expired.
+ * Prevents race conditions by locking during refresh.
  */
+
+// Simple in-memory lock to prevent concurrent refresh attempts
+const refreshLocks = new Map<string, Promise<JobberTokens | null>>();
+
 export async function getJobberAccessToken(
   installationId: string
 ): Promise<string | null> {
@@ -116,12 +121,28 @@ export async function getJobberAccessToken(
     const bufferMs = 5 * 60 * 1000; // 5 minutes
 
     if (!expiresAt || expiresAt.getTime() - now.getTime() < bufferMs) {
-      // Token expired or about to expire, refresh it
-      const newTokens = await refreshJobberToken(installationId);
-      if (!newTokens) {
-        return null;
+      // Check if a refresh is already in progress
+      const existingRefresh = refreshLocks.get(installationId);
+      if (existingRefresh) {
+        console.log("[JOBBER OAUTH] Waiting for existing refresh to complete");
+        const tokens = await existingRefresh;
+        return tokens?.access_token || null;
       }
-      return newTokens.access_token;
+
+      // Start refresh and add lock
+      const refreshPromise = refreshJobberToken(installationId);
+      refreshLocks.set(installationId, refreshPromise);
+
+      try {
+        const newTokens = await refreshPromise;
+        if (!newTokens) {
+          return null;
+        }
+        return newTokens.access_token;
+      } finally {
+        // Always remove lock when done
+        refreshLocks.delete(installationId);
+      }
     }
 
     return connection.access_token;
