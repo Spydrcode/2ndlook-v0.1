@@ -152,6 +152,13 @@ export async function GET(request: NextRequest) {
 
     const tokens = await tokenResponse.json();
     const { access_token, refresh_token, expires_in } = tokens;
+    const grantedScopesRaw = tokens.scope ?? tokens.scopes ?? null;
+    const grantedScopes =
+      typeof grantedScopesRaw === "string"
+        ? grantedScopesRaw
+        : Array.isArray(grantedScopesRaw)
+          ? grantedScopesRaw.join(" ")
+          : null;
 
     if (!access_token || !refresh_token) {
       console.error("Missing tokens in response:", tokens);
@@ -180,7 +187,7 @@ export async function GET(request: NextRequest) {
         accessToken: access_token,
         refreshToken: refresh_token,
         tokenExpiresAt: expiresAt,
-        scopes: process.env.JOBBER_SCOPES || null,
+        scopes: (grantedScopes ?? process.env.JOBBER_SCOPES) || null,
         metadata: { granted_at: new Date().toISOString() },
       });
     } catch (dbError) {

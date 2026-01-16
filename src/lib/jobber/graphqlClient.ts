@@ -18,10 +18,18 @@ function parseCost(extensions?: { cost?: CostInfo }) {
   };
 }
 
+function readErrorMessage(err: unknown): string {
+  if (!err || typeof err !== "object") return "";
+  if ("message" in err && typeof (err as { message?: unknown }).message === "string") {
+    return (err as { message: string }).message.toLowerCase();
+  }
+  return "";
+}
+
 function isThrottleError(errors: unknown[] | undefined): boolean {
   if (!errors) return false;
   return errors.some((err) => {
-    const msg = typeof err?.message === "string" ? err.message.toLowerCase() : "";
+    const msg = readErrorMessage(err);
     return msg.includes("throttle") || msg.includes("throttled") || msg.includes("rate limit");
   });
 }
@@ -30,7 +38,7 @@ function isMissingScopeError(errors: unknown[] | undefined): string[] {
   if (!errors) return [];
   const missing: string[] = [];
   for (const err of errors) {
-    const msg = typeof err?.message === "string" ? err.message.toLowerCase() : "";
+    const msg = readErrorMessage(err);
     if (
       msg.includes("permission") ||
       msg.includes("scope") ||
@@ -99,7 +107,7 @@ export async function jobberGraphQL<T>(
         if (missing.length > 0) {
           throw new JobberMissingScopesError("Missing required Jobber scopes", missing);
         }
-        const msg = json.errors?.[0]?.message ?? `HTTP ${response.status}`;
+        const msg = (json.errors?.[0] as { message?: string } | undefined)?.message ?? `HTTP ${response.status}`;
         throw new JobberAPIError(msg);
       }
 

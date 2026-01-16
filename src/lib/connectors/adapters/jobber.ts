@@ -8,6 +8,9 @@ import type {
   ConnectorAdapter,
   ConnectorPayload,
 } from "@/lib/connectors/types";
+import type { ClientRowInput } from "@/lib/ingest/normalize-clients";
+import type { InvoiceRowInput } from "@/lib/ingest/normalize-invoices";
+import type { JobRowInput } from "@/lib/ingest/normalize-jobs";
 import { JobberMissingScopesError } from "@/lib/jobber/errors";
 import { fetchClientsPaged, fetchInvoicesPaged, fetchJobsPaged, fetchQuotesPaged } from "@/lib/jobber/graphql";
 
@@ -33,9 +36,9 @@ export const jobberAdapter: ConnectorAdapter = {
       targetMaxCost: 6000,
     });
 
-    let invoicesResult: { rows: any[]; totalCost: number } = { rows: [], totalCost: 0 };
-    let jobsResult: { rows: any[]; totalCost: number } = { rows: [], totalCost: 0 };
-    let clientsResult: { rows: any[]; totalCost: number } = { rows: [], totalCost: 0 };
+    let invoicesResult: { rows: InvoiceRowInput[]; totalCost?: number } = { rows: [], totalCost: 0 };
+    let jobsResult: { rows: JobRowInput[]; totalCost?: number } = { rows: [], totalCost: 0 };
+    let clientsResult: { rows: ClientRowInput[]; totalCost?: number } = { rows: [], totalCost: 0 };
     let missingScopes: string[] = [];
 
     try {

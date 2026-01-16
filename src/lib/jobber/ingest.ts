@@ -8,6 +8,7 @@ import { getAdapter } from "@/lib/connectors/registry";
 import { runIngestFromPayload } from "@/lib/ingest/runIngest";
 import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
 import { JobberMissingScopesError, JobberRateLimitedError } from "@/lib/jobber/errors";
+import { getConnection } from "@/lib/oauth/connections";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface IngestJobberResult {
@@ -40,6 +41,17 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
   try {
     const supabase = createAdminClient();
     const adapter = getAdapter("jobber");
+    const connection = await getConnection(installationId, "jobber");
+    const scopesRaw = connection?.scopes ?? "";
+    const scopes = new Set(scopesRaw.split(/\s+/).filter(Boolean));
+    const requiredScopes = ["quotes:read"];
+    const missingScopes = requiredScopes.filter((scope) => !scopes.has(scope));
+    if (missingScopes.length > 0) {
+      throw new JobberMissingScopesError(
+        "Jobber permissions are incomplete; please reconnect to approve quotes.",
+        missingScopes,
+      );
+    }
 
     try {
       console.log("[JOBBER INGEST] Fetching canonical payload from adapter...");
@@ -98,7 +110,16 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
       // Rollback: delete source on fetch/normalize failure
       console.error("Ingestion failed:", fetchError);
 
-      const err = fetchError as unknown;
+      const err = fetchError as {
+        message?: string;
+        name?: string;
+        stack?: string;
+        status?: unknown;
+        statusText?: unknown;
+        requestId?: unknown;
+        graphqlErrors?: unknown;
+        responseText?: unknown;
+      };
       const errorCode =
         fetchError instanceof JobberRateLimitedError
           ? "jobber_rate_limited"

@@ -211,7 +211,8 @@ export default function ConnectPage() {
       jobber_ingest_failed:
         "We couldn't pull your Jobber data (quotes/invoices/jobs/clients). Please try again. If it keeps failing, open Debug Details below.",
       jobber_rate_limited: "Jobber rate-limited the sync. Please try again in ~60 seconds.",
-      jobber_missing_scopes: "Reconnect Jobber to approve the required permissions.",
+      jobber_missing_scopes:
+        "Reconnect Jobber to approve the required permissions. If it persists, confirm the Jobber app scopes include quotes, invoices, jobs, and clients.",
       jobber_min_estimates: `Minimum 25 meaningful estimates required. Jobber returned fewer than 25 sent/accepted/converted estimates from the last ${WINDOW_DAYS} days.`,
       jobber_insufficient_data: `Connected to Jobber, but we found only ${count || 0} meaningful estimates. 2ndlook needs at least ${required} sent/accepted/converted estimates for a full snapshot. Create/send more estimates in Jobber, then reconnect.`,
       jobber_config_error: "OAuth configuration error. Please contact support.",
