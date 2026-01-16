@@ -173,6 +173,7 @@ export async function GET(request: NextRequest) {
     await logEvent("token_exchange", {
       ok: true,
       status: tokenResponse.status,
+      granted_scopes: grantedScopes,
     });
 
     // Calculate token expiration (default to 1 hour if expires_in not provided)

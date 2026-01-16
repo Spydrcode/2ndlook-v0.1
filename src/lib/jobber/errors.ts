@@ -28,11 +28,18 @@ export class JobberMissingScopesError extends Error {
 export class JobberAPIError extends Error {
   code?: string;
   event_id?: string;
+  responseText?: string;
+  graphqlErrors?: unknown[];
 
-  constructor(message: string, options?: { code?: string; event_id?: string }) {
+  constructor(
+    message: string,
+    options?: { code?: string; event_id?: string; responseText?: string; graphqlErrors?: unknown[] },
+  ) {
     super(message);
     this.name = "JobberAPIError";
     this.code = options?.code;
     this.event_id = options?.event_id;
+    this.responseText = options?.responseText;
+    this.graphqlErrors = options?.graphqlErrors;
   }
 }

@@ -144,6 +144,7 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
         requestId: err?.requestId,
         graphqlErrors: err?.graphqlErrors,
         responseText: err?.responseText ? String(err.responseText).slice(0, 2000) : undefined,
+        granted_scopes: connection?.scopes ?? null,
       };
 
       if (eventId) {

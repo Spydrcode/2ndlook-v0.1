@@ -91,7 +91,9 @@ export async function jobberGraphQL<T>(
       try {
         json = JSON.parse(text);
       } catch (_err) {
-        throw new JobberAPIError("Jobber API returned non-JSON response");
+        throw new JobberAPIError("Jobber API returned non-JSON response", {
+          responseText: text.slice(0, 2000),
+        });
       }
 
       const cost = parseCost(json.extensions);
@@ -108,7 +110,10 @@ export async function jobberGraphQL<T>(
           throw new JobberMissingScopesError("Missing required Jobber scopes", missing);
         }
         const msg = (json.errors?.[0] as { message?: string } | undefined)?.message ?? `HTTP ${response.status}`;
-        throw new JobberAPIError(msg);
+        throw new JobberAPIError(msg, {
+          responseText: text.slice(0, 2000),
+          graphqlErrors: json.errors,
+        });
       }
 
       if (isThrottleError(json.errors)) {
@@ -130,7 +135,11 @@ export async function jobberGraphQL<T>(
         if (typeof json === "object" && json !== null && "event_id" in json) {
           event_id = (json as { event_id?: string }).event_id;
         }
-        throw new JobberAPIError("Jobber API returned empty data", { event_id });
+        throw new JobberAPIError("Jobber API returned empty data", {
+          event_id,
+          responseText: text.slice(0, 2000),
+          graphqlErrors: json.errors,
+        });
       }
 
       if (cost) {
