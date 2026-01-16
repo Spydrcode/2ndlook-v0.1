@@ -39,10 +39,8 @@ export {
   NotImplementedError,
 } from "./connector";
 export type {
-  CalendarSignals,
   ConnectorCategory,
   ConnectorTool,
-  CrmSignals,
   EstimateCanonicalRow,
   InvoiceCanonicalRow,
 } from "./types";

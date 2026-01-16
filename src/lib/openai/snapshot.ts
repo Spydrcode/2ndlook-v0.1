@@ -1,74 +1,45 @@
 import "server-only";
 
 import { getMinMeaningfulEstimates, WINDOW_DAYS } from "@/lib/config/limits";
+import type { BucketedAggregates } from "@/lib/mcp/client";
 import { createSnapshotResponse } from "@/lib/openai/client";
 import { snapshotOutputJsonSchema, snapshotOutputSchema } from "@/lib/openai/schemas";
+import { buildSnapshotSystemPrompt, buildSnapshotUserPrompt } from "@/lib/prompts/snapshotPromptPack";
 import type { SnapshotOutput } from "@/types/2ndlook";
 
 export interface DecisionSnapshotInput {
-  windowDays: 90;
-  connectorTools: string[];
-  estimateSignals?: {
-    countsByStatus: Record<string, number>;
-    totals?: { estimates?: number };
-    priceDistribution?: { band: string; count: number }[];
-    weeklyVolume?: { week: string; count: number }[];
-    latencyDistribution?: { band: string; count: number }[];
-    jobTypeDistribution?: { job_type: string; count: number }[];
-  };
-  invoiceSignals?: {
-    countsByStatus: Record<string, number>;
-    totals?: { invoices?: number };
-    priceDistribution?: { band: string; count: number }[];
-    timeToInvoice?: { band: string; count: number }[];
-    weeklyVolume?: { week: string; count: number }[];
-    statusDistribution?: { status: string; count: number }[];
-  };
+  aggregates: BucketedAggregates;
 }
 
 function isSnapshotEnabled(): boolean {
   return process.env.OPENAI_SNAPSHOT_ENABLED !== "false";
 }
 
-function toStatusBreakdown(
-  estimateSignals?: DecisionSnapshotInput["estimateSignals"],
-  invoiceSignals?: DecisionSnapshotInput["invoiceSignals"],
-): Record<string, number> | null {
+function toStatusBreakdown(aggregates: BucketedAggregates): Record<string, number> | null {
+  if (!aggregates.invoiceSignals) return null;
   const breakdown: Record<string, number> = {};
-
-  if (estimateSignals?.countsByStatus) {
-    for (const [status, count] of Object.entries(estimateSignals.countsByStatus)) {
-      if (typeof count === "number") {
-        breakdown[status] = count;
-      }
+  for (const item of aggregates.invoiceSignals.status_distribution ?? []) {
+    if (typeof item.count === "number") {
+      breakdown[item.status] = item.count;
     }
   }
-
-  if (invoiceSignals?.countsByStatus) {
-    for (const [status, count] of Object.entries(invoiceSignals.countsByStatus)) {
-      if (typeof count === "number") {
-        breakdown[status] = count;
-      }
-    }
-  }
-
   return Object.keys(breakdown).length > 0 ? breakdown : null;
 }
 
 function buildMockSnapshot(input: DecisionSnapshotInput): SnapshotOutput {
-  const estimateCount = input.estimateSignals?.totals?.estimates ?? null;
-  const invoiceCount = input.invoiceSignals?.totals?.invoices ?? null;
+  const estimateCount = input.aggregates.estimate_count ?? null;
+  const invoiceCount = input.aggregates.invoiceSignals?.invoice_count ?? null;
 
   return {
     kind: "snapshot",
     window_days: WINDOW_DAYS,
     signals: {
-      source_tools: input.connectorTools,
+      source_tools: input.aggregates.source_tool ? [input.aggregates.source_tool] : [],
       totals: {
         estimates: estimateCount,
         invoices: invoiceCount,
       },
-      status_breakdown: toStatusBreakdown(input.estimateSignals, input.invoiceSignals),
+      status_breakdown: toStatusBreakdown(input.aggregates),
     },
     scores: {
       demand_signal: 40,
@@ -94,8 +65,8 @@ function buildMockSnapshot(input: DecisionSnapshotInput): SnapshotOutput {
 }
 
 function buildInsufficientDataResult(input: DecisionSnapshotInput, requiredMinimum: number): SnapshotOutput {
-  const estimateCount = input.estimateSignals?.totals?.estimates ?? null;
-  const invoiceCount = input.invoiceSignals?.totals?.invoices ?? null;
+  const estimateCount = input.aggregates.estimate_count ?? null;
+  const invoiceCount = input.aggregates.invoiceSignals?.invoice_count ?? null;
 
   return {
     kind: "insufficient_data",
@@ -135,49 +106,29 @@ function getReasoningEffort(): "low" | "medium" | "high" {
   return "low";
 }
 
-function buildInstructions(): string {
-  return [
-    "You produce a business decision snapshot from aggregated operational signals.",
-    "Hard rules:",
-    "- Never include customer names, addresses, notes, line items, or any PII.",
-    "- Do not guess beyond the provided signals.",
-    "- If signals are insufficient, return the InsufficientDataResult only.",
-    "- Output MUST match the schema exactly.",
-    "- Keep language Quiet Founder: calm, direct, no hype.",
-    "",
-    "Signals you receive (all bucketed, no PII):",
-    "- priceDistribution: volume of estimates by price band (<500, 500-1500, 1500-5000, 5000+).",
-    "- weeklyVolume: ISO week counts to identify trend/consistency.",
-    "- latencyDistribution: days from create to close; higher in 0-7d implies fast decisions.",
-    "- jobTypeDistribution: counts by job type (unknown if not provided).",
-    "- invoiceSignals (optional): price bands, time-to-invoice buckets, status distribution, weekly volume.",
-    "Use these to ground findings (demand, speed, mix) and scores. Do not invent metrics.",
-  ].join("\n");
-}
-
 export async function generateDecisionSnapshot(input: DecisionSnapshotInput): Promise<SnapshotOutput> {
   if (!isSnapshotEnabled()) {
     return buildMockSnapshot(input);
   }
 
   const minRequired = getMinMeaningfulEstimates();
-  const estimateCount = input.estimateSignals?.totals?.estimates ?? null;
+  const estimateCount = input.aggregates.estimate_count ?? null;
 
   if (estimateCount === null || estimateCount < minRequired) {
     return buildInsufficientDataResult(input, minRequired);
   }
 
-  const requestPayload = {
-    window_days: input.windowDays,
-    connector_tools: input.connectorTools,
-    estimate_signals: input.estimateSignals,
-    invoice_signals: input.invoiceSignals ?? null,
-  };
+  const systemPrompt = buildSnapshotSystemPrompt();
+  const userPrompt = buildSnapshotUserPrompt({
+    toolName: input.aggregates.source_tool ?? "2ndlook",
+    windowDays: WINDOW_DAYS,
+    bucketed: input.aggregates,
+  });
 
   const response = await createSnapshotResponse<SnapshotOutput>({
     model: getModel(),
-    instructions: buildInstructions(),
-    input: JSON.stringify(requestPayload),
+    instructions: systemPrompt,
+    input: userPrompt,
     reasoning: { effort: getReasoningEffort() },
     text: {
       format: {

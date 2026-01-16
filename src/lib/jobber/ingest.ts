@@ -3,15 +3,11 @@
  * Fetches estimates from Jobber OAuth connection and creates source.
  */
 
-import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
-import { normalizeClientsAndStore } from "@/lib/ingest/normalize-clients";
-import { normalizeAndStore } from "@/lib/ingest/normalize-estimates";
-import { normalizeInvoicesAndStore } from "@/lib/ingest/normalize-invoices";
-import { normalizeJobsAndStore } from "@/lib/ingest/normalize-jobs";
+import { MIN_MEANINGFUL_ESTIMATES_PROD, WINDOW_DAYS } from "@/lib/config/limits";
+import { getAdapter } from "@/lib/connectors/registry";
+import { runIngestFromPayload } from "@/lib/ingest/runIngest";
 import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
 import { createAdminClient } from "@/lib/supabase/admin";
-
-import { fetchClients, fetchEstimates, fetchInvoices, fetchJobs } from "./graphql";
 
 export interface IngestJobberResult {
   success: boolean;
@@ -33,7 +29,7 @@ export interface IngestJobberResult {
  * Steps:
  * 1. Create source with status='pending'
  * 2. Fetch estimates from Jobber
- * 3. Normalize and store (enforces 90 days, max 100)
+ * 3. Normalize and store (enforces 90 days, max 100) via canonical adapter
  * 4. Update source status to 'ingested' and store metadata
  *
  * Returns source_id on success or error message on failure.
@@ -41,124 +37,26 @@ export interface IngestJobberResult {
 export async function ingestJobberEstimates(installationId: string, eventId?: string): Promise<IngestJobberResult> {
   try {
     const supabase = createAdminClient();
-
-    // Create source
-    const { data: source, error: sourceError } = await supabase
-      .from("sources")
-      .insert({
-        installation_id: installationId,
-        source_type: "jobber",
-        source_name: "Jobber (OAuth)",
-        status: "pending",
-      })
-      .select()
-      .single();
-
-    if (sourceError || !source) {
-      console.error("Failed to create source:", sourceError);
-      return {
-        success: false,
-        error: "Failed to create source",
-      };
-    }
-
-    const sourceId = source.id;
+    const adapter = getAdapter("jobber");
 
     try {
-      // Fetch estimates from Jobber
-      console.log("[JOBBER INGEST] Fetching estimates from Jobber for installation:", installationId);
-      const estimateRows = await fetchEstimates(installationId);
-      console.log(`[JOBBER INGEST] Fetched ${estimateRows.length} estimates from Jobber`);
+      console.log("[JOBBER INGEST] Fetching canonical payload from adapter...");
+      const payload = await adapter.fetchPayload({
+        oauth_connection_id: installationId,
+        window_days: WINDOW_DAYS,
+        limits: {
+          max_estimates: 100,
+          max_invoices: 100,
+          max_clients: 100,
+          max_jobs: 100,
+        },
+      });
 
-      if (estimateRows.length === 0) {
-        console.log("[JOBBER INGEST] WARNING: Zero estimates returned from Jobber API");
-        console.log("[JOBBER INGEST] This usually means:");
-        console.log("[JOBBER INGEST]   1. Wrong GraphQL query structure (nodes vs edges.node)");
-        console.log("[JOBBER INGEST]   2. No recent quotes in last 90 days");
-        console.log("[JOBBER INGEST]   3. Missing scope (might need requests:read)");
-      } else {
-        console.log("[JOBBER INGEST] Sample estimate data:", JSON.stringify(estimateRows.slice(0, 2), null, 2));
-      }
-
-      // Normalize and store (applies 90 day cutoff and max 100)
-      console.log("[JOBBER INGEST] Normalizing and storing estimates...");
-      const { kept, rejected, meaningful } = await normalizeAndStore(supabase, sourceId, estimateRows);
-
-      console.log(`[JOBBER INGEST] Normalization complete: ${kept} kept, ${rejected} rejected`);
-
-      // Fetch and normalize invoices
-      let keptInvoices = 0;
-      let rejectedInvoices = 0;
-      try {
-        console.log("[JOBBER INGEST] Fetching invoices from Jobber...");
-        const invoiceRows = await fetchInvoices(installationId);
-        console.log(`[JOBBER INGEST] Fetched ${invoiceRows.length} invoices from Jobber`);
-        const result = await normalizeInvoicesAndStore(supabase, sourceId, invoiceRows);
-        keptInvoices = result.kept;
-        rejectedInvoices = result.rejected;
-        console.log(
-          `[JOBBER INGEST] Invoice normalization complete: ${keptInvoices} kept, ${rejectedInvoices} rejected`,
-        );
-      } catch (invoiceError) {
-        console.error(
-          "[JOBBER INGEST] Invoice ingest skipped (non-fatal):",
-          invoiceError instanceof Error ? invoiceError.message : invoiceError,
-        );
-      }
-
-      // Fetch and normalize jobs
-      let keptJobs = 0;
-      let rejectedJobs = 0;
-      try {
-        console.log("[JOBBER INGEST] Fetching jobs from Jobber...");
-        const jobRows = await fetchJobs(installationId);
-        console.log(`[JOBBER INGEST] Fetched ${jobRows.length} jobs from Jobber`);
-        const result = await normalizeJobsAndStore(supabase, sourceId, jobRows);
-        keptJobs = result.kept;
-        rejectedJobs = result.rejected;
-        console.log(`[JOBBER INGEST] Job normalization complete: ${keptJobs} kept, ${rejectedJobs} rejected`);
-      } catch (jobError) {
-        console.error(
-          "[JOBBER INGEST] Job ingest skipped (non-fatal):",
-          jobError instanceof Error ? jobError.message : jobError,
-        );
-      }
-
-      // Fetch and normalize clients
-      let keptClients = 0;
-      let rejectedClients = 0;
-      try {
-        console.log("[JOBBER INGEST] Fetching clients from Jobber...");
-        const clientRows = await fetchClients(installationId);
-        console.log(`[JOBBER INGEST] Fetched ${clientRows.length} clients from Jobber`);
-        const result = await normalizeClientsAndStore(supabase, sourceId, clientRows);
-        keptClients = result.kept;
-        rejectedClients = result.rejected;
-        console.log(`[JOBBER INGEST] Client normalization complete: ${keptClients} kept, ${rejectedClients} rejected`);
-      } catch (clientError) {
-        console.error(
-          "[JOBBER INGEST] Client ingest skipped (non-fatal):",
-          clientError instanceof Error ? clientError.message : clientError,
-        );
-      }
-
-      console.log("[JOBBER INGEST] Updating source status to ingested...");
-      await supabase
-        .from("sources")
-        .update({
-          status: "ingested",
-          metadata: {
-            meaningful_estimates: meaningful,
-            required_min: MIN_MEANINGFUL_ESTIMATES_PROD,
-            totals: {
-              estimates: kept,
-              invoices: keptInvoices,
-              jobs: keptJobs,
-              clients: keptClients,
-            },
-          },
-        })
-        .eq("id", sourceId);
+      console.log("[JOBBER INGEST] Running unified ingest pipeline...");
+      const ingestResult = await runIngestFromPayload(payload, installationId, {
+        sourceName: "Jobber (OAuth)",
+        supabase,
+      });
 
       console.log("[JOBBER INGEST] SUCCESS! Ingestion complete.");
       if (eventId) {
@@ -168,14 +66,14 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
             eventId,
             phase: "ingest_success",
             details: {
-              source_id: sourceId,
-              meaningful_estimates: meaningful,
+              source_id: ingestResult.source_id,
+              meaningful_estimates: ingestResult.meaningful,
               required_min: MIN_MEANINGFUL_ESTIMATES_PROD,
-              kept,
-              rejected,
-              invoices: keptInvoices,
-              jobs: keptJobs,
-              clients: keptClients,
+              kept: ingestResult.kept,
+              rejected: ingestResult.rejected,
+              invoices: ingestResult.invoices_kept,
+              jobs: ingestResult.jobs_kept,
+              clients: ingestResult.clients_kept,
             },
           });
         } catch (logError) {
@@ -184,20 +82,19 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
       }
       return {
         success: true,
-        source_id: sourceId,
+        source_id: ingestResult.source_id,
         status: "ingested",
-        meaningful_estimates: meaningful,
+        meaningful_estimates: ingestResult.meaningful,
         required_min: MIN_MEANINGFUL_ESTIMATES_PROD,
-        kept,
-        rejected,
-        invoices_kept: keptInvoices,
-        jobs_kept: keptJobs,
-        clients_kept: keptClients,
+        kept: ingestResult.kept,
+        rejected: ingestResult.rejected,
+        invoices_kept: ingestResult.invoices_kept,
+        jobs_kept: ingestResult.jobs_kept,
+        clients_kept: ingestResult.clients_kept,
       };
     } catch (fetchError) {
       // Rollback: delete source on fetch/normalize failure
       console.error("Ingestion failed:", fetchError);
-      await supabase.from("sources").delete().eq("id", sourceId);
 
       const err = fetchError as any;
       const errorDetails = {

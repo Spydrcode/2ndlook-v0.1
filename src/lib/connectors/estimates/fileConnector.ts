@@ -65,6 +65,10 @@ export class FileEstimateConnector implements UniversalConnector {
         amount: Number.parseFloat(row.amount || "0"),
         status: normalizeEstimateStatus(row.status),
         job_type: row.job_type || null,
+        client_id: row.client_id || null,
+        job_id: row.job_id || null,
+        geo_city: row.geo_city || null,
+        geo_postal: row.geo_postal || null,
       };
 
       rows.push(canonicalRow);

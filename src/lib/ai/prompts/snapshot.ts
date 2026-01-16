@@ -1,4 +1,7 @@
 /**
+ * @deprecated Use src/lib/prompts/snapshotPromptPack.ts (system + user prompts) instead.
+ * This remains for backward compatibility with older docs/examples.
+ *
  * Snapshot analysis prompt builder
  *
  * Generates context-aware prompts for snapshot analysis,

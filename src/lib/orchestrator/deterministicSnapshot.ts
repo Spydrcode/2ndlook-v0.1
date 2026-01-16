@@ -63,42 +63,82 @@ export function buildDeterministicSnapshot(
     {} as Record<string, number>,
   );
   const highValueShare = (priceMix["1500-5000"] ?? 0) + (priceMix["5000+"] ?? 0);
-  const jobTypeTop = aggregates.job_type_distribution?.[0] ?? { job_type: "unknown", count: 0 };
+  const repeatClientRatio =
+    typeof aggregates.repeat_client_ratio === "number" && Number.isFinite(aggregates.repeat_client_ratio)
+      ? aggregates.repeat_client_ratio
+      : null;
+  const repeatClientCount = aggregates.repeat_client_count ?? 0;
+  const uniqueClientCount = aggregates.unique_client_count ?? 0;
+  const topCity = aggregates.geo_city_distribution?.[0];
+  const topPostal = aggregates.geo_postal_prefix_distribution?.[0];
 
-  const findings = [
+  const findings: Array<{ title: string; detail: string }> = [
     {
       title: "Demand rhythm",
       detail:
         demandTrend === "up"
-          ? "Recent weekly volume is rising; lean into capacity planning to keep up."
+          ? "Recent weekly volume is rising; line up capacity now so you can keep pace without scrambling."
           : demandTrend === "down"
-            ? "Volume dipped versus earlier weeks; check outreach or seasonality before hiring."
-            : "Weekly volume is steady; keep current pacing and watch for shifts before scaling up.",
-    },
-    {
-      title: "Deal size mix",
-      detail:
-        highValueShare > (priceMix["500-1500"] ?? 0) + (priceMix["<500"] ?? 0)
-          ? "Higher-ticket work dominates; protect close rates and cycle time on those bands."
-          : "Most work sits below $1.5k; consider upsell/cross-sell offers to lift ticket size.",
+            ? "Volume dipped versus earlier weeks; pause hiring and focus on re-engaging warm leads."
+            : "Weekly volume is steady; stay the course but keep an eye on any week-over-week wobble.",
     },
     {
       title: "Decision speed",
       detail:
         totalLatency === 0
-          ? "No closed decisions yet; watch the first few cycles to set a baseline."
+          ? "No closed decisions yet; set a 48-hour follow-up rule to establish a baseline quickly."
           : fastLatency / Math.max(totalLatency, 1) >= 0.6
-            ? "Decisions are landing quickly (0-7d majority); keep response times tight to sustain it."
-            : "Longer decision cycles showing up; simplify quotes or follow-up to shorten latency.",
-    },
-    {
-      title: "Job mix signal",
-      detail:
-        jobTypeTop.job_type === "unknown"
-          ? "Job types are mostly unspecified; add job type tagging to see which work wins fastest."
-          : `Top job type is ${jobTypeTop.job_type}; make sure pricing and staffing reflect that mix.`,
+            ? "Most decisions land inside a week; keep responses tight and avoid adding extra steps."
+            : "Decisions are stretching out; trim quote steps and schedule proactive follow-ups to close faster.",
     },
   ];
+
+  if (repeatClientRatio !== null) {
+    const repeatDetail =
+      repeatClientRatio >= 0.5
+        ? "Repeat clients are anchoring bookings; protect them with priority scheduling and proactive check-ins."
+        : "Most work is one-off; build a simple post-completion follow-up to turn wins into the next booked job.";
+    const repeatLabel =
+      repeatClientCount > 0 && uniqueClientCount > 0
+        ? `${repeatClientCount}/${uniqueClientCount} clients are coming back`
+        : "Repeat signal spotted";
+    findings.push({
+      title: "Repeat leverage",
+      detail: `${repeatDetail} (${repeatLabel}).`,
+    });
+  }
+
+  if (topCity || topPostal) {
+    const geoLabel = topCity?.city ?? (topPostal?.prefix ? `postal ${topPostal.prefix}` : "local cluster");
+    findings.push({
+      title: "Geo focus",
+      detail: `Work is clustering around ${geoLabel}; deepen presence there before widening your radius.`,
+    });
+  }
+
+  const nextSteps = [
+    {
+      label: "Tighten follow-up on slow decisions",
+      why: "Aging quotes add latency; set a 48-hour follow-up for anything not closed in a week.",
+    },
+  ];
+
+  if (repeatClientRatio !== null) {
+    nextSteps.push({
+      label: "Install a repeat loop",
+      why: "A simple post-completion check-in turns one-off wins into the next booking without storing PII.",
+    });
+  } else if (topCity || topPostal) {
+    nextSteps.push({
+      label: "Prioritize your densest zone",
+      why: "Stack crews and offers where volume clusters before expanding your service radius.",
+    });
+  } else {
+    nextSteps.push({
+      label: "Tag job types consistently",
+      why: "Cleaner job-type data sharpens pricing and staffing calls without exposing PII.",
+    });
+  }
 
   return {
     kind: "snapshot",
@@ -130,16 +170,7 @@ export function buildDeterministicSnapshot(
       confidence: confidenceLevel,
     },
     findings,
-    next_steps: [
-      {
-        label: "Tighten follow-up on slow decisions",
-        why: "Aging quotes add latency; set a 48-hour follow-up for anything not closed in a week.",
-      },
-      {
-        label: "Tag job types consistently",
-        why: "Cleaner job-type data sharpens pricing and staffing calls without exposing PII.",
-      },
-    ],
+    next_steps: nextSteps,
     disclaimers: ["Signals are aggregated. No customer data is included."],
   };
 }
@@ -202,6 +233,52 @@ export function validateBucketedAggregates(aggregates: unknown): asserts aggrega
     for (const item of agg.job_type_distribution as any[]) {
       if (typeof item?.count !== "number") {
         throw new Error("Invalid aggregates: job_type_distribution counts must be numbers");
+      }
+    }
+  }
+
+  if (agg.unique_client_count !== undefined && typeof agg.unique_client_count !== "number") {
+    throw new Error("Invalid aggregates: unique_client_count must be number if provided");
+  }
+
+  if (agg.repeat_client_count !== undefined && typeof agg.repeat_client_count !== "number") {
+    throw new Error("Invalid aggregates: repeat_client_count must be number if provided");
+  }
+
+  if (agg.repeat_client_ratio !== undefined) {
+    const ratio = agg.repeat_client_ratio as number;
+    if (typeof ratio !== "number" || Number.isNaN(ratio) || !Number.isFinite(ratio)) {
+      throw new Error("Invalid aggregates: repeat_client_ratio must be a finite number if provided");
+    }
+  }
+
+  if (agg.geo_city_distribution) {
+    if (!Array.isArray(agg.geo_city_distribution)) {
+      throw new Error("Invalid aggregates: geo_city_distribution must be array if provided");
+    }
+    if ((agg.geo_city_distribution as any[]).length > 50) {
+      throw new Error("Invalid aggregates: geo_city_distribution too large");
+    }
+    for (const item of agg.geo_city_distribution as any[]) {
+      if (typeof item?.count !== "number" || typeof item?.city !== "string") {
+        throw new Error("Invalid aggregates: geo_city_distribution items must have city and count");
+      }
+    }
+  }
+
+  if (agg.geo_postal_prefix_distribution) {
+    if (!Array.isArray(agg.geo_postal_prefix_distribution)) {
+      throw new Error("Invalid aggregates: geo_postal_prefix_distribution must be array if provided");
+    }
+    if ((agg.geo_postal_prefix_distribution as any[]).length > 50) {
+      throw new Error("Invalid aggregates: geo_postal_prefix_distribution too large");
+    }
+    for (const item of agg.geo_postal_prefix_distribution as any[]) {
+      if (typeof item?.count !== "number" || typeof item?.prefix !== "string") {
+        throw new Error("Invalid aggregates: geo_postal_prefix_distribution items must have prefix and count");
+      }
+      if (item.prefix.length > 5) {
+        throw new Error("Invalid aggregates: postal prefix too long");
       }
     }
   }

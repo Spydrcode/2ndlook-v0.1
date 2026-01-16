@@ -64,6 +64,13 @@ export async function normalizeAndStore(
 
     const normalizedStatus = normalizeEstimateStatus(row.status);
 
+    const clientId = row.client_id !== undefined && row.client_id !== null ? String(row.client_id).trim() : "";
+    const jobId = row.job_id !== undefined && row.job_id !== null ? String(row.job_id).trim() : "";
+    const geoCityRaw =
+      row.geo_city !== undefined && row.geo_city !== null ? String(row.geo_city).trim().toLowerCase() : "";
+    const geoPostalRaw =
+      row.geo_postal !== undefined && row.geo_postal !== null ? String(row.geo_postal).replace(/[^a-z0-9]/gi, "") : "";
+
     normalized.push({
       estimate_id: row.estimate_id,
       source_id: sourceId,
@@ -72,6 +79,10 @@ export async function normalizeAndStore(
       updated_at: updatedAt ? updatedAt.toISOString() : null,
       amount,
       status: normalizedStatus,
+      client_id: clientId || null,
+      job_id: jobId || null,
+      geo_city: geoCityRaw || null,
+      geo_postal: geoPostalRaw ? geoPostalRaw.toLowerCase() : null,
       job_type: row.job_type || undefined,
     });
 

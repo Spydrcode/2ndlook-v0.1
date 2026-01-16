@@ -225,6 +225,7 @@ export async function fetchEstimates(installationId: string): Promise<CSVEstimat
           closed_at: closedAt,
           amount: normalizedAmount,
           status: normalizedStatus,
+          client_id: quote.client?.id ?? null,
           job_type: undefined, // Not available in this schema version
         };
       });

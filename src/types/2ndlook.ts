@@ -56,6 +56,10 @@ export interface EstimateNormalized {
   updated_at?: string | null;
   amount: number;
   status: EstimateStatus;
+  client_id?: string | null;
+  job_id?: string | null;
+  geo_city?: string | null;
+  geo_postal?: string | null;
   job_type?: string;
 }
 
@@ -104,6 +108,12 @@ export interface EstimateBucket {
   latency_band_22_plus: number;
   weekly_volume: { week: string; count: number }[];
   job_type_distribution?: { job_type: string; count: number }[];
+  unique_client_count?: number;
+  repeat_client_count?: number;
+  repeat_client_ratio?: number;
+  geo_city_distribution?: { city: string; count: number }[];
+  geo_postal_prefix_distribution?: { prefix: string; count: number }[];
+  repeat_by_price_band?: { band: PriceBand; repeat_client_count: number }[];
   created_at: string;
 }
 
@@ -227,4 +237,9 @@ export interface CSVEstimateRow {
   amount: string | number;
   status: string;
   job_type?: string;
+  client_id?: string | null;
+  job_id?: string | null;
+  geo_city?: string | null;
+  geo_postal?: string | null;
+  geo_region?: string | null;
 }

@@ -262,3 +262,8 @@ See [ORCHESTRATOR_INTEGRATION.md](ORCHESTRATOR_INTEGRATION.md) for migration exa
 **Ready for**: Production use with `OPENAI_API_KEY` configured.
 
 **No UI changes**: Integration into UI left for future work per requirements.
+## Prompt Pack (v0.1+)
+
+- System prompt enforces doctrine (not a dashboard), bucket-only inputs, max 3 findings + 3 next steps + 1 deprioritize, and zero PII beyond city/postal prefix.
+- User prompt feeds bucketed aggregates (price, latency, repeat ratio, geo distributions, invoices if present) and asks for finite conclusions and ranked actions.
+- Deterministic snapshot remains fallback; prompts are additive, not required for pipeline health.

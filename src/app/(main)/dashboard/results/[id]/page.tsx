@@ -1,12 +1,12 @@
 import Link from "next/link";
 
-import { AlertCircle, ArrowLeft } from "lucide-react";
+import { AlertCircle, ArrowLeft, Download } from "lucide-react";
 
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ConfidenceLevel, SnapshotOutput } from "@/types/2ndlook";
 
@@ -44,7 +44,6 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
   const supabase = createAdminClient();
   const snapshotId = params.id;
 
-  // Fetch snapshot with source
   const { data: snapshot, error } = await supabase
     .from("snapshots")
     .select("*, sources!inner(installation_id)")
@@ -56,7 +55,9 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
       <div className="flex flex-1 flex-col gap-6 p-6">
         <div className="space-y-1">
           <h1 className="font-semibold text-2xl tracking-tight">Snapshot not found</h1>
-          <p className="text-muted-foreground">This snapshot does not exist. Try running a new snapshot from Connect.</p>
+          <p className="text-muted-foreground">
+            This snapshot does not exist. Try running a new snapshot from Connect.
+          </p>
         </div>
         <Button asChild variant="outline">
           <Link href="/dashboard/connect">
@@ -68,7 +69,6 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
     );
   }
 
-  // Parse snapshot result
   let snapshotResult: SnapshotOutput;
   try {
     snapshotResult = typeof snapshot.result === "string" ? JSON.parse(snapshot.result) : snapshot.result;
@@ -147,24 +147,92 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
-      {/* Header */}
-      <div className="space-y-1">
-        <div className="flex items-center gap-3">
-          <h1 className="font-semibold text-2xl tracking-tight">Snapshot</h1>
-          <Badge variant={getConfidenceBadgeVariant(scores.confidence)}>{scores.confidence}</Badge>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            <h1 className="font-semibold text-2xl tracking-tight">Decision snapshot</h1>
+            <Badge variant={getConfidenceBadgeVariant(scores.confidence)}>{scores.confidence}</Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-4 text-muted-foreground text-sm">
+            <span>{signals.totals.estimates ?? 0} meaningful estimates</span>
+            <span>·</span>
+            <span>{formatDate(snapshot.generated_at)}</span>
+          </div>
+          <p className="text-muted-foreground text-sm">Aggregated signals only. No customer or line-item details.</p>
         </div>
-        <div className="flex items-center gap-4 text-muted-foreground text-sm">
-          <span>{signals.totals.estimates ?? 0} meaningful estimates</span>
-          <span>·</span>
-          <span>{formatDate(snapshot.generated_at)}</span>
+        <div className="flex flex-col items-start gap-1">
+          <Button asChild variant="outline" className="gap-2" size="sm">
+            <Link href={`/dashboard/results/${snapshotId}/print`} target="_blank" rel="noreferrer">
+              <Download className="h-4 w-4" />
+              Download PDF
+            </Link>
+          </Button>
+          <p className="text-muted-foreground text-xs">Opens a print-friendly version you can save as PDF.</p>
         </div>
-        <p className="text-muted-foreground text-sm">Meaningful estimates only. No customer or line-item details.</p>
       </div>
 
-      {/* Signals */}
       <Card>
         <CardHeader>
-          <CardTitle>Signals</CardTitle>
+          <CardTitle>What this means</CardTitle>
+          <CardDescription>Finite conclusions to reduce decision burden</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {findings.map((item) => (
+            <div key={item.title}>
+              <p className="font-medium">{item.title}</p>
+              <p className="text-muted-foreground text-sm">{item.detail}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Do next</CardTitle>
+          <CardDescription>Low-effort, ranked actions</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {next_steps.map((item) => (
+            <div key={item.label}>
+              <p className="font-medium">{item.label}</p>
+              <p className="text-muted-foreground text-sm">{item.why}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>If you want to implement this yourself</CardTitle>
+          <CardDescription>Pick one move at a time and keep it calm.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+            {next_steps.slice(0, 3).map((item) => (
+              <li key={item.label}>{item.label}</li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>If you want a second set of hands</CardTitle>
+          <CardDescription>
+            We can plug in a deeper layer when you’re ready — without changing your tools.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          <Button variant="secondary" size="sm">
+            Chat with us
+          </Button>
+          <p className="text-muted-foreground text-xs">Soft invitation only; no pressure.</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Supporting signals</CardTitle>
           <CardDescription>Aggregated totals and status mix</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -183,7 +251,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
           </div>
           {signals.status_breakdown && (
             <div className="space-y-3">
-              <h3 className="font-medium text-sm">Status breakdown</h3>
+              <h3 className="font-medium text-sm">Status mix</h3>
               <div className="space-y-2">
                 {Object.entries(signals.status_breakdown).map(([status, count]) => (
                   <div key={status} className="flex items-center justify-between text-sm">
@@ -197,63 +265,33 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
         </CardContent>
       </Card>
 
-      {/* Scores */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Scores</CardTitle>
-          <CardDescription>Signals summarized into 0-100 scores</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {[
-            { label: "Demand signal", value: scores.demand_signal },
-            { label: "Cash signal", value: scores.cash_signal },
-            { label: "Decision latency", value: scores.decision_latency },
-            { label: "Capacity pressure", value: scores.capacity_pressure },
-          ].map((item) => (
-            <div key={item.label}>
-              <div className="mb-1 flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{item.label}</span>
-                <span className="font-medium">{item.value}</span>
+      <Accordion type="single" collapsible className="rounded-lg border">
+        <AccordionItem value="scores">
+          <AccordionTrigger className="px-4">Optional detail (how we summarized the signals)</AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <div className="space-y-2 text-sm">
+              <p className="font-medium">Signal summary (internal weighting)</p>
+              <div className="space-y-1">
+                {[
+                  { label: "Demand signal", value: scores.demand_signal },
+                  { label: "Cash signal", value: scores.cash_signal },
+                  { label: "Decision latency", value: scores.decision_latency },
+                  { label: "Capacity pressure", value: scores.capacity_pressure },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center justify-between">
+                    <span className="text-muted-foreground">{item.label}</span>
+                    <span className="font-medium">{item.value}</span>
+                  </div>
+                ))}
               </div>
-              <Progress value={item.value} className="h-2" />
+              <p className="text-muted-foreground text-xs">
+                Internal view only; not meant as KPIs or ongoing monitoring.
+              </p>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
-      {/* Findings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Findings</CardTitle>
-          <CardDescription>Key takeaways from the signals</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {findings.map((item) => (
-            <div key={item.title}>
-              <p className="font-medium">{item.title}</p>
-              <p className="text-muted-foreground text-sm">{item.detail}</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Next steps */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Next steps</CardTitle>
-          <CardDescription>Suggested actions based on the snapshot</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {next_steps.map((item) => (
-            <div key={item.label}>
-              <p className="font-medium">{item.label}</p>
-              <p className="text-muted-foreground text-sm">{item.why}</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Disclaimers */}
       <Card>
         <CardHeader>
           <CardTitle>Disclaimers</CardTitle>
@@ -267,7 +305,6 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
         </CardContent>
       </Card>
 
-      {/* Actions */}
       <div className="flex justify-between">
         <Button asChild variant="outline">
           <Link href="/dashboard/connect">

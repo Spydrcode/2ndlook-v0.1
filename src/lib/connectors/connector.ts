@@ -3,14 +3,7 @@
  * Provides a contract for all data connectors (estimates, calendar, CRM).
  */
 
-import type {
-  CalendarSignals,
-  ConnectorCategory,
-  ConnectorTool,
-  CrmSignals,
-  EstimateCanonicalRow,
-  InvoiceCanonicalRow,
-} from "./types";
+import type { ConnectorCategory, ConnectorTool, EstimateCanonicalRow, InvoiceCanonicalRow } from "./types";
 
 /**
  * Custom error for unimplemented connector methods.
@@ -59,16 +52,6 @@ export interface UniversalConnector {
    * OAuth-based invoice connectors will implement this.
    */
   fetchInvoices?(): Promise<InvoiceCanonicalRow[]>;
-
-  /**
-   * For v0.2+: Fetch aggregated calendar signals.
-   */
-  fetchCalendarSignals?(): Promise<CalendarSignals>;
-
-  /**
-   * For v0.2+: Fetch aggregated CRM signals.
-   */
-  fetchCrmSignals?(): Promise<CrmSignals>;
 }
 
 /**

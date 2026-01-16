@@ -1,4 +1,3 @@
-import { WINDOW_DAYS } from "@/lib/config/limits";
 import { createMCPClient } from "@/lib/mcp/client";
 import { generateDecisionSnapshot } from "@/lib/openai/snapshot";
 import { buildDeterministicSnapshot, validateBucketedAggregates } from "@/lib/orchestrator/deterministicSnapshot";
@@ -82,33 +81,6 @@ export async function runSnapshotOrchestrator(params: RunSnapshotParams): Promis
     validateBucketedAggregates(aggregates);
 
     // Step 3: Prepare safe agent input (aggregates only)
-    const invoiceStatusCounts = aggregates.invoiceSignals
-      ? Object.fromEntries(aggregates.invoiceSignals.status_distribution.map((item) => [item.status, item.count]))
-      : undefined;
-
-    const agentInput = {
-      windowDays: WINDOW_DAYS as 90,
-      connectorTools: aggregates.source_tool ? [aggregates.source_tool] : [],
-      estimateSignals: {
-        countsByStatus: {},
-        totals: { estimates: aggregates.estimate_count },
-        priceDistribution: aggregates.price_distribution,
-        weeklyVolume: aggregates.weekly_volume,
-        latencyDistribution: aggregates.latency_distribution,
-        jobTypeDistribution: aggregates.job_type_distribution ?? [],
-      },
-      invoiceSignals: aggregates.invoiceSignals
-        ? {
-            countsByStatus: invoiceStatusCounts ?? {},
-            totals: { invoices: aggregates.invoiceSignals.invoice_count },
-            priceDistribution: aggregates.invoiceSignals.price_distribution,
-            timeToInvoice: aggregates.invoiceSignals.time_to_invoice,
-            weeklyVolume: aggregates.invoiceSignals.weekly_volume,
-            statusDistribution: aggregates.invoiceSignals.status_distribution,
-          }
-        : undefined,
-    };
-
     // Step 4: Try orchestrated generation with OpenAI (max 1 call)
     console.log("[Orchestrator] Calling OpenAI for snapshot generation:", {
       snapshot_id,
@@ -119,7 +91,7 @@ export async function runSnapshotOrchestrator(params: RunSnapshotParams): Promis
 
     try {
       // OpenAI call (max 1 per v0.1 constraint)
-      snapshotResult = await generateDecisionSnapshot(agentInput);
+      snapshotResult = await generateDecisionSnapshot({ aggregates });
 
       // Validate LLM output matches schema
       validateSnapshotResult(snapshotResult);

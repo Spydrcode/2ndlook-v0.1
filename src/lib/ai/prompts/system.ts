@@ -1,10 +1,12 @@
 /**
+ * @deprecated Use src/lib/prompts/snapshotPromptPack.ts (doctrine-enforced) instead.
+ * Kept for backward compatibility with older docs/examples.
+ *
  * System prompt for snapshot analysis
  *
  * Defines the AI's role, context, and behavior for analyzing
  * bucketed estimate data and generating insights.
  */
-
 export function buildSystemPrompt(): string {
   return `You are a business intelligence assistant specializing in analyzing contractor estimate data.
 

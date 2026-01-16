@@ -110,6 +110,7 @@ mcp-inspector npx tsx mcp-server/index.ts
 - [x] Verifies source ownership
 - [x] Returns bucketed aggregates only
 - [x] Includes weekly_volume, price_distribution, decision_latency
+- [x] Includes repeat + geo aggregates (city + postal prefix only, no PII)
 - [x] Returns estimate_count for metadata
 
 ### write_snapshot_result

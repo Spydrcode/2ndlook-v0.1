@@ -1,67 +1,87 @@
 /**
- * Canonical types for the Universal Connector system.
- * These types define the normalized data shapes that all connectors must produce.
+ * Tool-agnostic canonical connector shapes.
+ * All adapters must produce these payloads so ingest stays unified.
  */
 
-export type ConnectorCategory = "estimates" | "invoices";
+export type ConnectorKind = "jobber" | "square" | "stripe" | "quickbooks" | "file";
 
-export type EstimateConnectorTool = "jobber" | "housecall-pro";
+export type CanonicalClient = {
+  client_id: string;
+  created_at?: string | null;
+  geo_city?: string | null;
+  geo_postal?: string | null;
+};
 
-export type InvoiceConnectorTool = "stripe" | "square" | "paypal" | "wave" | "zoho-invoice" | "paymo" | "quickbooks";
-
-export type ConnectorTool = EstimateConnectorTool | InvoiceConnectorTool;
-
-/**
- * Canonical estimate row.
- * All estimate connectors must normalize their data to this shape.
- */
-export interface EstimateCanonicalRow {
+export type CanonicalEstimate = {
   estimate_id: string;
-  created_at: string; // ISO 8601
-  closed_at?: string | null; // ISO 8601
-  updated_at?: string | null; // ISO 8601
+  created_at: string;
+  updated_at?: string | null;
+  closed_at?: string | null;
+  status: string;
   amount: number;
-  status: "draft" | "sent" | "accepted" | "declined" | "expired" | "cancelled" | "converted" | "unknown";
+  currency?: string | null;
+  client_id?: string | null;
+  job_id?: string | null;
+  geo_city?: string | null;
+  geo_postal?: string | null;
   job_type?: string | null;
-}
+};
 
-/**
- * Canonical invoice row.
- * All invoice connectors must normalize their data to this shape.
- * Signal-only: no customer names, addresses, line items, notes, taxes, discounts, or payments.
- */
-export interface InvoiceCanonicalRow {
-  invoice_id: string; // Opaque identifier
-  invoice_date: string; // ISO 8601
-  invoice_total: number;
-  invoice_status: "draft" | "sent" | "void" | "paid" | "unpaid" | "overdue" | "refunded" | "partial" | "unknown";
-  linked_estimate_id?: string | null; // Optional link to estimate
-}
+export type CanonicalInvoice = {
+  invoice_id: string;
+  created_at: string;
+  paid: boolean;
+  paid_at?: string | null;
+  amount: number;
+  currency?: string | null;
+  client_id?: string | null;
+  geo_city?: string | null;
+  geo_postal?: string | null;
+};
 
-/**
- * Aggregated calendar signals (optional, for v0.2+).
- * Calendar connectors provide aggregated busy/free patterns, not individual events.
- */
-export interface CalendarSignals {
-  window_start: string; // ISO 8601
-  window_end: string; // ISO 8601
-  busy_blocks_by_week: Array<{
-    week: string; // ISO week string
-    blocks: number; // count of busy blocks
-  }>;
-  confidence: "low" | "medium" | "high";
-}
+export type CanonicalJob = {
+  job_id: string;
+  created_at?: string | null;
+  completed_at?: string | null;
+  client_id?: string | null;
+  geo_city?: string | null;
+  geo_postal?: string | null;
+  job_type?: string | null;
+  job_status?: string | null;
+};
 
-/**
- * Aggregated CRM signals (optional, for v0.2+).
- * CRM connectors provide aggregated follow-up patterns, not individual contacts.
- */
-export interface CrmSignals {
-  window_start: string; // ISO 8601
-  window_end: string; // ISO 8601
-  followups_by_latency_band: Array<{
-    band: "0-2" | "3-7" | "8-21" | "22+";
-    count: number;
-  }>;
-  confidence: "low" | "medium" | "high";
-}
+export type ConnectorPayload = {
+  kind: ConnectorKind;
+  generated_at: string;
+  window_days: number;
+  limits: {
+    max_estimates: number;
+    max_invoices: number;
+    max_clients: number;
+    max_jobs: number;
+  };
+  clients: CanonicalClient[];
+  estimates: CanonicalEstimate[];
+  invoices: CanonicalInvoice[];
+  jobs: CanonicalJob[];
+};
+
+export type ConnectorAdapter = {
+  kind: ConnectorKind;
+  fetchPayload(args: {
+    oauth_connection_id: string;
+    window_days: number;
+    limits: ConnectorPayload["limits"];
+  }): Promise<ConnectorPayload>;
+};
+
+// Legacy aliases kept for backward compatibility with existing connectors.
+export type ConnectorCategory = "estimates" | "invoices";
+export type EstimateConnectorTool = "jobber" | "housecall-pro";
+export type InvoiceConnectorTool = "stripe" | "square" | "paypal" | "wave" | "zoho-invoice" | "paymo" | "quickbooks";
+export type ConnectorTool = EstimateConnectorTool | InvoiceConnectorTool;
+export type EstimateCanonicalRow = CanonicalEstimate;
+export type InvoiceCanonicalRow = CanonicalInvoice & {
+  invoice_status?: string;
+  linked_estimate_id?: string | null;
+};

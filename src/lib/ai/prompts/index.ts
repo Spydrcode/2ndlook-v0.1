@@ -1,9 +1,9 @@
 /**
- * Prompt pack for AI-powered snapshot analysis
- *
- * Centralized prompt management for consistent, maintainable
- * AI interactions across the application.
+ * Prompt pack for AI-powered snapshot analysis.
+ * Legacy exports below are deprecated; prefer src/lib/prompts/snapshotPromptPack.ts.
  */
 
-export { buildSnapshotPrompt } from "./snapshot";
-export { buildSystemPrompt } from "./system";
+export { buildSnapshotSystemPrompt, buildSnapshotUserPrompt } from "@/lib/prompts/snapshotPromptPack";
+
+export { buildSnapshotPrompt } from "./snapshot"; // Deprecated
+export { buildSystemPrompt } from "./system"; // Deprecated

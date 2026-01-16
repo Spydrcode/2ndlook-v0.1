@@ -5,7 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
 import { createClient } from "@supabase/supabase-js";
 
-import type { EstimateBucket, SnapshotResult } from "./types.js";
+import type { EstimateBucket, SnapshotResult, SourceStatus } from "./types.js";
 
 const MEANINGFUL_ESTIMATE_STATUSES = ["sent", "accepted", "converted"];
 
@@ -46,7 +46,7 @@ const TOOLS: Tool[] = [
   {
     name: "get_bucketed_aggregates",
     description:
-      "Get bucketed aggregates for a source (no raw estimates). Returns weekly volume, price distribution, job type distribution, and decision latency buckets.",
+      "Get bucketed aggregates for a source (no raw estimates). Returns weekly volume, price distribution, job type distribution, decision latency buckets, and repeat/geo signals.",
     inputSchema: {
       type: "object",
       properties: {
@@ -124,6 +124,87 @@ const TOOLS: Tool[] = [
   },
 ];
 
+export function buildSafeBucketResponse({
+  bucket,
+  sourceStatus,
+  sourceId,
+  estimateCount,
+  invoiceBucket,
+  invoiceCount,
+}: {
+  bucket: EstimateBucket;
+  sourceStatus: SourceStatus;
+  sourceId: string;
+  estimateCount: number;
+  invoiceBucket?: any;
+  invoiceCount?: number;
+}) {
+  const typedBucket = bucket as EstimateBucket;
+  const result: any = {
+    source_id: sourceId,
+    estimate_count: estimateCount || 0,
+    status: sourceStatus,
+    weekly_volume: typedBucket.weekly_volume,
+    price_distribution: [
+      { band: "<500", count: typedBucket.price_band_lt_500 },
+      { band: "500-1500", count: typedBucket.price_band_500_1500 },
+      { band: "1500-5000", count: typedBucket.price_band_1500_5000 },
+      { band: "5000+", count: typedBucket.price_band_5000_plus },
+    ],
+    latency_distribution: [
+      { band: "0-2d", count: typedBucket.latency_band_0_2 },
+      { band: "3-7d", count: typedBucket.latency_band_3_7 },
+      { band: "8-21d", count: typedBucket.latency_band_8_21 },
+      { band: "22+d", count: typedBucket.latency_band_22_plus },
+    ],
+    job_type_distribution: typedBucket.job_type_distribution || [],
+    unique_client_count: typedBucket.unique_client_count ?? 0,
+    repeat_client_count: typedBucket.repeat_client_count ?? 0,
+    repeat_client_ratio: Number.isFinite(Number(typedBucket.repeat_client_ratio))
+      ? Number(typedBucket.repeat_client_ratio)
+      : 0,
+    geo_city_distribution: typedBucket.geo_city_distribution || [],
+    geo_postal_prefix_distribution: typedBucket.geo_postal_prefix_distribution || [],
+  };
+
+  if (typedBucket.repeat_by_price_band) {
+    result.repeat_by_price_band = typedBucket.repeat_by_price_band;
+  }
+
+  if (invoiceBucket && invoiceCount && invoiceCount > 0) {
+    const typedInvoiceBucket = invoiceBucket as any;
+    result.invoiceSignals = {
+      invoice_count: invoiceCount,
+      price_distribution: [
+        { band: "<500", count: typedInvoiceBucket.price_band_lt_500 || 0 },
+        { band: "500-1500", count: typedInvoiceBucket.price_band_500_1500 || 0 },
+        { band: "1500-5000", count: typedInvoiceBucket.price_band_1500_5000 || 0 },
+        { band: "5000+", count: typedInvoiceBucket.price_band_5000_plus || 0 },
+      ],
+      time_to_invoice: [
+        { band: "0-7d", count: typedInvoiceBucket.time_to_invoice_0_7 || 0 },
+        { band: "8-14d", count: typedInvoiceBucket.time_to_invoice_8_14 || 0 },
+        { band: "15-30d", count: typedInvoiceBucket.time_to_invoice_15_30 || 0 },
+        { band: "31+d", count: typedInvoiceBucket.time_to_invoice_31_plus || 0 },
+      ],
+      status_distribution: [
+        { status: "draft", count: typedInvoiceBucket.status_draft || 0 },
+        { status: "sent", count: typedInvoiceBucket.status_sent || 0 },
+        { status: "void", count: typedInvoiceBucket.status_void || 0 },
+        { status: "paid", count: typedInvoiceBucket.status_paid || 0 },
+        { status: "unpaid", count: typedInvoiceBucket.status_unpaid || 0 },
+        { status: "overdue", count: typedInvoiceBucket.status_overdue || 0 },
+        { status: "refunded", count: typedInvoiceBucket.status_refunded || 0 },
+        { status: "partial", count: typedInvoiceBucket.status_partial || 0 },
+        { status: "unknown", count: typedInvoiceBucket.status_unknown || 0 },
+      ],
+      weekly_volume: typedInvoiceBucket.weekly_volume || [],
+    };
+  }
+
+  return result;
+}
+
 // Tool handlers
 async function handleGetBucketedAggregates(args: { installation_id: string; source_id: string }) {
   const supabase = getSupabaseClient();
@@ -182,61 +263,14 @@ async function handleGetBucketedAggregates(args: { installation_id: string; sour
     }
   }
 
-  // Return safe bucketed data only
-  const typedBucket = bucket as EstimateBucket;
-  const result: any = {
-    source_id: args.source_id,
-    estimate_count: estimateCount || 0,
-    status: source.status,
-    weekly_volume: typedBucket.weekly_volume,
-    price_distribution: [
-      { band: "<500", count: typedBucket.price_band_lt_500 },
-      { band: "500-1500", count: typedBucket.price_band_500_1500 },
-      { band: "1500-5000", count: typedBucket.price_band_1500_5000 },
-      { band: "5000+", count: typedBucket.price_band_5000_plus },
-    ],
-    latency_distribution: [
-      { band: "0-2d", count: typedBucket.latency_band_0_2 },
-      { band: "3-7d", count: typedBucket.latency_band_3_7 },
-      { band: "8-21d", count: typedBucket.latency_band_8_21 },
-      { band: "22+d", count: typedBucket.latency_band_22_plus },
-    ],
-    job_type_distribution: typedBucket.job_type_distribution || [],
-  };
-
-  // Add invoice signals if available (optional)
-  if (invoiceBucket && invoiceCount > 0) {
-    const typedInvoiceBucket = invoiceBucket as any;
-    result.invoiceSignals = {
-      invoice_count: invoiceCount,
-      price_distribution: [
-        { band: "<500", count: typedInvoiceBucket.price_band_lt_500 || 0 },
-        { band: "500-1500", count: typedInvoiceBucket.price_band_500_1500 || 0 },
-        { band: "1500-5000", count: typedInvoiceBucket.price_band_1500_5000 || 0 },
-        { band: "5000+", count: typedInvoiceBucket.price_band_5000_plus || 0 },
-      ],
-      time_to_invoice: [
-        { band: "0-7d", count: typedInvoiceBucket.time_to_invoice_0_7 || 0 },
-        { band: "8-14d", count: typedInvoiceBucket.time_to_invoice_8_14 || 0 },
-        { band: "15-30d", count: typedInvoiceBucket.time_to_invoice_15_30 || 0 },
-        { band: "31+d", count: typedInvoiceBucket.time_to_invoice_31_plus || 0 },
-      ],
-      status_distribution: [
-        { status: "draft", count: typedInvoiceBucket.status_draft || 0 },
-        { status: "sent", count: typedInvoiceBucket.status_sent || 0 },
-        { status: "void", count: typedInvoiceBucket.status_void || 0 },
-        { status: "paid", count: typedInvoiceBucket.status_paid || 0 },
-        { status: "unpaid", count: typedInvoiceBucket.status_unpaid || 0 },
-        { status: "overdue", count: typedInvoiceBucket.status_overdue || 0 },
-        { status: "refunded", count: typedInvoiceBucket.status_refunded || 0 },
-        { status: "partial", count: typedInvoiceBucket.status_partial || 0 },
-        { status: "unknown", count: typedInvoiceBucket.status_unknown || 0 },
-      ],
-      weekly_volume: typedInvoiceBucket.weekly_volume || [],
-    };
-  }
-
-  return result;
+  return buildSafeBucketResponse({
+    bucket: bucket as EstimateBucket,
+    sourceStatus: source.status,
+    sourceId: args.source_id,
+    estimateCount: estimateCount || 0,
+    invoiceBucket: invoiceBucket || undefined,
+    invoiceCount,
+  });
 }
 
 async function handleWriteSnapshotResult(args: {
@@ -408,7 +442,10 @@ async function main() {
   console.error("2ndlook MCP Server running on stdio");
 }
 
-main().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+const invokedScript = process.argv[1] || "";
+if (invokedScript.includes("index.ts") || invokedScript.includes("index.js")) {
+  main().catch((error) => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
+}

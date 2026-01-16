@@ -36,6 +36,12 @@ export interface BucketedAggregates {
   price_distribution: { band: string; count: number }[];
   latency_distribution: { band: string; count: number }[];
   job_type_distribution?: { job_type: string; count: number }[];
+  unique_client_count?: number;
+  repeat_client_count?: number;
+  repeat_client_ratio?: number;
+  geo_city_distribution?: { city: string; count: number }[];
+  geo_postal_prefix_distribution?: { prefix: string; count: number }[];
+  repeat_by_price_band?: { band: string; repeat_client_count: number }[];
   // Optional: invoice signals (present when invoices are available)
   invoiceSignals?: {
     invoice_count: number;

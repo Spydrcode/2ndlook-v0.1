@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function bucketEstimates(estimates: EstimateNormalized[]) {
+export function bucketEstimates(estimates: EstimateNormalized[]) {
   // Price band counters
   let priceBandLt500 = 0;
   let priceBand5001500 = 0;
@@ -109,6 +109,9 @@ function bucketEstimates(estimates: EstimateNormalized[]) {
   // Weekly volume map
   const weeklyMap = new Map<string, number>();
   const jobTypeMap = new Map<string, number>();
+  const clientCountMap = new Map<string, number>();
+  const cityMap = new Map<string, number>();
+  const postalPrefixMap = new Map<string, number>();
 
   for (const estimate of estimates) {
     if (!MEANINGFUL_ESTIMATE_STATUSES.includes(estimate.status)) {
@@ -159,6 +162,22 @@ function bucketEstimates(estimates: EstimateNormalized[]) {
     // Job type distribution (bucketed, unknown if missing)
     const jobType = estimate.job_type?.toLowerCase?.() || "unknown";
     jobTypeMap.set(jobType, (jobTypeMap.get(jobType) || 0) + 1);
+
+    const clientId = estimate.client_id ? String(estimate.client_id).trim() : "";
+    if (clientId) {
+      clientCountMap.set(clientId, (clientCountMap.get(clientId) || 0) + 1);
+    }
+
+    const geoCity = estimate.geo_city ? String(estimate.geo_city).trim().toLowerCase() : "";
+    if (geoCity) {
+      cityMap.set(geoCity, (cityMap.get(geoCity) || 0) + 1);
+    }
+
+    const geoPostal = estimate.geo_postal ? String(estimate.geo_postal).trim().toLowerCase() : "";
+    const postalPrefix = geoPostal.replace(/[^a-z0-9]/g, "").slice(0, 3);
+    if (postalPrefix && postalPrefix.length === 3) {
+      postalPrefixMap.set(postalPrefix, (postalPrefixMap.get(postalPrefix) || 0) + 1);
+    }
   }
 
   // Convert weekly map to array
@@ -169,6 +188,20 @@ function bucketEstimates(estimates: EstimateNormalized[]) {
   const jobTypeDistribution = Array.from(jobTypeMap.entries())
     .map(([job_type, count]) => ({ job_type, count }))
     .sort((a, b) => b.count - a.count);
+
+  const uniqueClientCount = clientCountMap.size;
+  const repeatClientCount = Array.from(clientCountMap.values()).filter((count) => count >= 2).length;
+  const repeatClientRatio = repeatClientCount / Math.max(uniqueClientCount, 1);
+
+  const geoCityDistribution = Array.from(cityMap.entries())
+    .map(([city, count]) => ({ city, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  const geoPostalPrefixDistribution = Array.from(postalPrefixMap.entries())
+    .map(([prefix, count]) => ({ prefix, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
 
   return {
     price_band_lt_500: priceBandLt500,
@@ -181,6 +214,12 @@ function bucketEstimates(estimates: EstimateNormalized[]) {
     latency_band_22_plus: latencyBand22Plus,
     weekly_volume: weeklyVolume,
     job_type_distribution: jobTypeDistribution,
+    unique_client_count: uniqueClientCount,
+    repeat_client_count: repeatClientCount,
+    repeat_client_ratio: repeatClientRatio,
+    geo_city_distribution: geoCityDistribution,
+    geo_postal_prefix_distribution: geoPostalPrefixDistribution,
+    repeat_by_price_band: [],
   };
 }
 

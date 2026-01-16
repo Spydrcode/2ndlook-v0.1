@@ -54,10 +54,19 @@ export class FileInvoiceConnector implements UniversalConnector {
       const status = normalizeInvoiceStatus(row.invoice_status);
 
       // Normalize to canonical shape
+      const paid = status === "paid";
+      const createdAt = row.invoice_date || new Date().toISOString();
+
       const canonicalRow: InvoiceCanonicalRow = {
         invoice_id: row.invoice_id || `INV-${Date.now()}-${i}`,
-        invoice_date: row.invoice_date || new Date().toISOString(),
-        invoice_total: Number.parseFloat(row.invoice_total || "0"),
+        created_at: createdAt,
+        paid,
+        paid_at: paid ? createdAt : null,
+        amount: Number.parseFloat(row.invoice_total || "0"),
+        currency: null,
+        client_id: row.client_id || null,
+        geo_city: null,
+        geo_postal: null,
         invoice_status: status,
         linked_estimate_id: row.linked_estimate_id || null,
       };

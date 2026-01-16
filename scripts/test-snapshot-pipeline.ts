@@ -23,6 +23,17 @@ async function main() {
       { band: "1500-5000", count: 15 },
       { band: "5000+", count: 10 },
     ],
+    unique_client_count: 30,
+    repeat_client_count: 12,
+    repeat_client_ratio: 0.4,
+    geo_city_distribution: [
+      { city: "toronto", count: 14 },
+      { city: "vancouver", count: 6 },
+    ],
+    geo_postal_prefix_distribution: [
+      { prefix: "m5v", count: 10 },
+      { prefix: "v5k", count: 6 },
+    ],
     latency_distribution: [
       { band: "0-2d", count: 12 },
       { band: "3-7d", count: 16 },
@@ -65,34 +76,7 @@ async function main() {
 
   validateBucketedAggregates(aggregates);
 
-  const invoiceStatusCounts = Object.fromEntries(
-    aggregates.invoiceSignals?.status_distribution.map((item) => [item.status, item.count]) ?? [],
-  );
-
-  const agentInput = {
-    windowDays: 90 as const,
-    connectorTools: aggregates.source_tool ? [aggregates.source_tool] : [],
-    estimateSignals: {
-      countsByStatus: {},
-      totals: { estimates: aggregates.estimate_count },
-      priceDistribution: aggregates.price_distribution,
-      weeklyVolume: aggregates.weekly_volume,
-      latencyDistribution: aggregates.latency_distribution,
-      jobTypeDistribution: aggregates.job_type_distribution ?? [],
-    },
-    invoiceSignals: aggregates.invoiceSignals
-      ? {
-          countsByStatus: invoiceStatusCounts,
-          totals: { invoices: aggregates.invoiceSignals.invoice_count },
-          priceDistribution: aggregates.invoiceSignals.price_distribution,
-          timeToInvoice: aggregates.invoiceSignals.time_to_invoice,
-          weeklyVolume: aggregates.invoiceSignals.weekly_volume,
-          statusDistribution: aggregates.invoiceSignals.status_distribution,
-        }
-      : undefined,
-  };
-
-  const llmResult = await generateDecisionSnapshot(agentInput);
+  const llmResult = await generateDecisionSnapshot({ aggregates });
   snapshotOutputSchema.parse(llmResult);
   console.log("LLM (or mock) snapshot schema valid:", llmResult.kind, llmResult.scores.confidence);
 
