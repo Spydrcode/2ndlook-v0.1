@@ -5,7 +5,7 @@ import type { JobRowInput } from "@/lib/ingest/normalize-jobs";
 import { normalizeEstimateStatus } from "@/lib/ingest/statuses";
 import type { CSVEstimateRow } from "@/types/2ndlook";
 
-import { JobberMissingScopesError } from "./errors";
+import { JobberAPIError, JobberMissingScopesError } from "./errors";
 import { jobberGraphQL } from "./graphqlClient";
 import { getJobberAccessToken } from "./oauth";
 
@@ -66,7 +66,7 @@ export async function fetchQuotesPaged(args: PageArgs): Promise<{
             sentAt
             amounts { subtotal }
             client { id }
-            job { id }
+            jobs { nodes { id } }
           }
         }
       }
@@ -107,7 +107,7 @@ export async function fetchQuotesPaged(args: PageArgs): Promise<{
             sentAt?: string | null;
             amounts?: { subtotal?: number | string | null } | null;
             client?: { id?: string | null } | null;
-            job?: { id?: string | null } | null;
+            jobs?: { nodes?: Array<{ id?: string | null }> | null } | null;
           }>;
         };
       };
@@ -126,7 +126,7 @@ export async function fetchQuotesPaged(args: PageArgs): Promise<{
             sentAt?: string | null;
             amounts?: { subtotal?: number | string | null } | null;
             client?: { id?: string | null } | null;
-            job?: { id?: string | null } | null;
+            jobs?: { nodes?: Array<{ id?: string | null }> | null } | null;
           }>;
         };
       }>(queryWithLinks, { after, first: pageSize, since: args.sinceISO }, accessToken, {
@@ -151,6 +151,51 @@ export async function fetchQuotesPaged(args: PageArgs): Promise<{
         }>(queryMinimal, { after, first: pageSize, since: args.sinceISO }, accessToken, {
           targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
         });
+      } else if (err instanceof JobberAPIError && err.message.includes("jobs")) {
+        console.warn("[JOBBER] Quote jobs field unavailable; retrying quotes without job links.");
+        quoteResult = await jobberGraphQL<{
+          quotes: {
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            nodes: Array<{
+              id: string;
+              createdAt: string;
+              updatedAt?: string | null;
+              quoteStatus?: string | null;
+              sentAt?: string | null;
+              amounts?: { subtotal?: number | string | null } | null;
+              client?: { id?: string | null } | null;
+            }>;
+          };
+        }>(
+          `
+          query GetQuotesNoJobs($after: String, $first: Int!, $since: ISO8601DateTime!) {
+            quotes(
+              first: $first
+              after: $after
+              filter: { updatedAt: { after: $since } }
+            ) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              nodes {
+                id
+                createdAt
+                updatedAt
+                quoteStatus
+                sentAt
+                amounts { subtotal }
+                client { id }
+              }
+            }
+          }
+        `,
+          { after, first: pageSize, since: args.sinceISO },
+          accessToken,
+          {
+            targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
+          },
+        );
       } else {
         throw err;
       }
@@ -173,7 +218,7 @@ export async function fetchQuotesPaged(args: PageArgs): Promise<{
             sentAt?: string | null;
             amounts?: { subtotal?: number | string | null } | null;
             client?: { id?: string | null } | null;
-            job?: { id?: string | null } | null;
+            jobs?: { nodes?: Array<{ id?: string | null }> | null } | null;
           }>;
         };
       };
@@ -195,7 +240,7 @@ export async function fetchQuotesPaged(args: PageArgs): Promise<{
         sentAt?: string | null;
         amounts?: { subtotal?: number | string | null } | null;
         client?: { id?: string | null } | null;
-        job?: { id?: string | null } | null;
+        jobs?: { nodes?: Array<{ id?: string | null }> | null } | null;
       }) => {
         const amountRaw = quote.amounts?.subtotal ?? 0;
         const parsedAmount = typeof amountRaw === "string" ? parseFloat(amountRaw) : Number(amountRaw);
@@ -212,7 +257,7 @@ export async function fetchQuotesPaged(args: PageArgs): Promise<{
           amount: normalizedAmount,
           status: normalizedStatus,
           client_id: quote.client?.id ?? null,
-          job_id: quote.job?.id ?? null,
+          job_id: quote.jobs?.nodes?.[0]?.id ?? null,
           geo_city: null,
           geo_postal: null,
         };
@@ -261,7 +306,7 @@ export async function fetchInvoicesPaged(args: PageArgs): Promise<{ rows: Invoic
             createdAt
             updatedAt
             invoiceStatus
-            amounts { total { amount } }
+            amounts { total }
             client { id }
           }
         }
@@ -277,7 +322,7 @@ export async function fetchInvoicesPaged(args: PageArgs): Promise<{ rows: Invoic
             createdAt: string;
             updatedAt?: string | null;
             invoiceStatus: string;
-            amounts?: { total?: { amount?: number | string | null } | null } | null;
+            amounts?: { total?: number | string | null } | null;
             client?: { id?: string | null } | null;
           }>;
         };
@@ -291,7 +336,7 @@ export async function fetchInvoicesPaged(args: PageArgs): Promise<{ rows: Invoic
           createdAt: string;
           updatedAt?: string | null;
           invoiceStatus: string;
-          amounts?: { total?: { amount?: number | string | null } | null } | null;
+          amounts?: { total?: number | string | null } | null;
           client?: { id?: string | null } | null;
         }>;
       };
@@ -313,15 +358,13 @@ export async function fetchInvoicesPaged(args: PageArgs): Promise<{ rows: Invoic
         createdAt: string;
         updatedAt?: string | null;
         invoiceStatus: string;
-        amounts?: { total?: { amount?: number | string | null } | null } | null;
+        amounts?: { total?: number | string | null } | null;
         client?: { id?: string | null } | null;
       }) => ({
         invoice_id: invoice.id,
         invoice_date: invoice.updatedAt || invoice.createdAt,
         invoice_total:
-          invoice.amounts?.total?.amount !== undefined && invoice.amounts?.total?.amount !== null
-            ? invoice.amounts.total.amount
-            : 0,
+          invoice.amounts?.total !== undefined && invoice.amounts?.total !== null ? invoice.amounts.total : 0,
         invoice_status: invoice.invoiceStatus,
         linked_estimate_id: null,
       }),
@@ -350,7 +393,7 @@ export async function fetchJobsPaged(args: PageArgs): Promise<{ rows: JobRowInpu
   let totalCost = 0;
 
   while (rows.length < maxRecords && pages < (args.maxPages ?? MAX_PAGES)) {
-    const query = `
+    const queryWithFilter = `
       query GetJobs($after: String, $first: Int!, $since: ISO8601DateTime!) {
         jobs(
           first: $first
@@ -374,7 +417,30 @@ export async function fetchJobsPaged(args: PageArgs): Promise<{ rows: JobRowInpu
       }
     `;
 
-    const jobResult: {
+    const queryNoFilter = `
+      query GetJobsNoFilter($after: String, $first: Int!) {
+        jobs(
+          first: $first
+          after: $after
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            createdAt
+            startAt
+            endAt
+            jobStatus
+            total
+            client { id }
+          }
+        }
+      }
+    `;
+
+    let jobResult: {
       data: {
         jobs: {
           pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -390,24 +456,71 @@ export async function fetchJobsPaged(args: PageArgs): Promise<{ rows: JobRowInpu
         };
       };
       cost?: { requested: number; max: number; available?: number };
-    } = await jobberGraphQL<{
-      jobs: {
-        pageInfo: { hasNextPage: boolean; endCursor: string | null };
-        nodes: Array<{
-          id: string;
-          createdAt: string;
-          startAt?: string | null;
-          endAt?: string | null;
-          jobStatus?: string | null;
-          total?: number | string | null;
-          client?: { id?: string | null } | null;
-        }>;
-      };
-    }>(query, { after, first: pageSize, since: args.sinceISO }, accessToken, {
-      targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
-    });
+    } | null = null;
 
-    const { data, cost } = jobResult;
+    try {
+      jobResult = await jobberGraphQL<{
+        jobs: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            id: string;
+            createdAt: string;
+            startAt?: string | null;
+            endAt?: string | null;
+            jobStatus?: string | null;
+            total?: number | string | null;
+            client?: { id?: string | null } | null;
+          }>;
+        };
+      }>(queryWithFilter, { after, first: pageSize, since: args.sinceISO }, accessToken, {
+        targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
+      });
+    } catch (err) {
+      if (err instanceof JobberAPIError && err.message.includes("updatedAt")) {
+        console.warn("[JOBBER] Jobs updatedAt filter unsupported; retrying without filter.");
+        jobResult = await jobberGraphQL<{
+          jobs: {
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            nodes: Array<{
+              id: string;
+              createdAt: string;
+              startAt?: string | null;
+              endAt?: string | null;
+              jobStatus?: string | null;
+              total?: number | string | null;
+              client?: { id?: string | null } | null;
+            }>;
+          };
+        }>(queryNoFilter, { after, first: pageSize }, accessToken, {
+          targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
+        });
+      } else {
+        throw err;
+      }
+    }
+
+    if (!jobResult) break;
+
+    const {
+      data,
+      cost,
+    }: {
+      data: {
+        jobs: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            id: string;
+            createdAt: string;
+            startAt?: string | null;
+            endAt?: string | null;
+            jobStatus?: string | null;
+            total?: number | string | null;
+            client?: { id?: string | null } | null;
+          }>;
+        };
+      };
+      cost?: { requested: number; max: number; available?: number };
+    } = jobResult;
 
     if (cost) {
       totalCost += cost.requested ?? 0;
