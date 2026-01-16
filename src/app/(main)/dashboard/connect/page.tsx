@@ -42,6 +42,7 @@ export default function ConnectPage() {
   } | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [showDebugDetails, setShowDebugDetails] = useState(false);
+  const [showErrorHelp, setShowErrorHelp] = useState(false);
 
   useEffect(() => {
     const errorParam = searchParams.get("error");
@@ -186,6 +187,8 @@ export default function ConnectPage() {
   }, []);
 
   const eventIdFromUrl = searchParams.get("event_id");
+  const isRateLimitedError = error === "jobber_rate_limited";
+  const isMissingScopesError = error === "jobber_missing_scopes";
 
   const getErrorMessage = (errorCode: string): string => {
     const count = searchParams.get("count");
@@ -207,6 +210,8 @@ export default function ConnectPage() {
       jobber_db_error: "Failed to save connection details. Please try again.",
       jobber_ingest_failed:
         "We couldn't pull your Jobber data (quotes/invoices/jobs/clients). Please try again. If it keeps failing, open Debug Details below.",
+      jobber_rate_limited: "Jobber rate-limited the sync. Please try again in ~60 seconds.",
+      jobber_missing_scopes: "Reconnect Jobber to approve the required permissions.",
       jobber_min_estimates: `Minimum 25 meaningful estimates required. Jobber returned fewer than 25 sent/accepted/converted estimates from the last ${WINDOW_DAYS} days.`,
       jobber_insufficient_data: `Connected to Jobber, but we found only ${count || 0} meaningful estimates. 2ndlook needs at least ${required} sent/accepted/converted estimates for a full snapshot. Create/send more estimates in Jobber, then reconnect.`,
       jobber_config_error: "OAuth configuration error. Please contact support.",
@@ -251,6 +256,14 @@ export default function ConnectPage() {
     jobberEvents?.last_error_details && Object.keys(jobberEvents.last_error_details).length > 0
       ? jobberEvents.last_error_details
       : null;
+  const jobberLastErrorFriendly = useMemo(() => {
+    const raw = jobberEvents?.last_error_message;
+    if (!raw) return "None";
+    const lower = raw.toLowerCase();
+    if (lower.includes("rate limit") || lower.includes("throttle")) return "Rate limited — try again shortly.";
+    if (lower.includes("scope") || lower.includes("permission")) return "Permissions need update — reconnect.";
+    return raw;
+  }, [jobberEvents?.last_error_message]);
 
   return (
     <div className="flex flex-1 flex-col gap-8 p-6">
@@ -273,7 +286,33 @@ export default function ConnectPage() {
       {error && (
         <Alert variant="destructive">
           <AlertDescription className="flex items-center justify-between gap-3">
-            <span>{getErrorMessage(error)}</span>
+            <div className="flex flex-col gap-1">
+              <span>{getErrorMessage(error)}</span>
+              {(isRateLimitedError || isMissingScopesError) && (
+                <div className="text-muted-foreground text-xs">
+                  <button
+                    type="button"
+                    className="underline underline-offset-2"
+                    onClick={() => setShowErrorHelp((prev) => !prev)}
+                  >
+                    What happened?
+                  </button>
+                  {showErrorHelp && (
+                    <div className="mt-1 space-y-1">
+                      {isRateLimitedError && (
+                        <p>
+                          We requested too much from Jobber at once. We now retry in smaller batches. Give it ~60
+                          seconds and reconnect.
+                        </p>
+                      )}
+                      {isMissingScopesError && (
+                        <p>Your Jobber connection needs updated permissions to pull invoices, jobs, and clients.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <Button
               variant="ghost"
               size="sm"
@@ -364,7 +403,7 @@ export default function ConnectPage() {
                           : "Fail"
                         : "Never"}
                     </div>
-                    <div>Last error: {jobberEvents?.last_error_message || "None"}</div>
+                    <div>Last error: {jobberLastErrorFriendly}</div>
                     <div className="flex items-center justify-between gap-2">
                       <span>Event ID: {eventIdFromUrl || jobberEvents?.last_event_id || "N/A"}</span>
                       <Button

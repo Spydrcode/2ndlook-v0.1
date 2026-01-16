@@ -8,7 +8,8 @@ import type {
   ConnectorAdapter,
   ConnectorPayload,
 } from "@/lib/connectors/types";
-import { fetchClients, fetchEstimates, fetchInvoices, fetchJobs } from "@/lib/jobber/graphql";
+import { JobberMissingScopesError } from "@/lib/jobber/errors";
+import { fetchClientsPaged, fetchInvoicesPaged, fetchJobsPaged, fetchQuotesPaged } from "@/lib/jobber/graphql";
 
 /**
  * Jobber adapter: maps Jobber GraphQL outputs to canonical connector payload.
@@ -21,15 +22,74 @@ export const jobberAdapter: ConnectorAdapter = {
     limits: ConnectorPayload["limits"];
   }): Promise<ConnectorPayload> {
     const windowDays = args.window_days || WINDOW_DAYS;
+    const since = new Date();
+    since.setDate(since.getDate() - windowDays);
+    const sinceISO = since.toISOString();
 
-    const [estimateRows, invoiceRows, jobRows, clientRows] = await Promise.all([
-      fetchEstimates(args.oauth_connection_id),
-      fetchInvoices(args.oauth_connection_id),
-      fetchJobs(args.oauth_connection_id),
-      fetchClients(args.oauth_connection_id),
-    ]);
+    const quotesResult = await fetchQuotesPaged({
+      installationId: args.oauth_connection_id,
+      sinceISO,
+      limit: args.limits.max_estimates ?? 25,
+      targetMaxCost: 6000,
+    });
 
-    const estimates: CanonicalEstimate[] = (estimateRows || []).map((row) => ({
+    let invoicesResult: { rows: any[]; totalCost: number } = { rows: [], totalCost: 0 };
+    let jobsResult: { rows: any[]; totalCost: number } = { rows: [], totalCost: 0 };
+    let clientsResult: { rows: any[]; totalCost: number } = { rows: [], totalCost: 0 };
+    let missingScopes: string[] = [];
+
+    try {
+      invoicesResult = await fetchInvoicesPaged({
+        installationId: args.oauth_connection_id,
+        sinceISO,
+        limit: args.limits.max_invoices ?? 25,
+        targetMaxCost: 6000,
+      });
+    } catch (err) {
+      if (err instanceof JobberMissingScopesError) {
+        missingScopes = [...missingScopes, ...err.missing];
+        console.warn("[JOBBER] Missing scopes for invoices; continuing without invoices:", err);
+        invoicesResult = { rows: [], totalCost: 0 };
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      jobsResult = await fetchJobsPaged({
+        installationId: args.oauth_connection_id,
+        sinceISO,
+        limit: args.limits.max_jobs ?? 25,
+        targetMaxCost: 6000,
+      });
+    } catch (err) {
+      if (err instanceof JobberMissingScopesError) {
+        missingScopes = [...missingScopes, ...err.missing];
+        console.warn("[JOBBER] Missing scopes for jobs; continuing without jobs:", err);
+        jobsResult = { rows: [], totalCost: 0 };
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      clientsResult = await fetchClientsPaged({
+        installationId: args.oauth_connection_id,
+        sinceISO,
+        limit: args.limits.max_clients ?? 25,
+        targetMaxCost: 6000,
+      });
+    } catch (err) {
+      if (err instanceof JobberMissingScopesError) {
+        missingScopes = [...missingScopes, ...err.missing];
+        console.warn("[JOBBER] Missing scopes for clients; continuing without clients:", err);
+        clientsResult = { rows: [], totalCost: 0 };
+      } else {
+        throw err;
+      }
+    }
+
+    const estimates: CanonicalEstimate[] = (quotesResult.rows || []).map((row) => ({
       estimate_id: row.estimate_id,
       created_at: row.created_at,
       updated_at: row.updated_at ?? null,
@@ -44,7 +104,7 @@ export const jobberAdapter: ConnectorAdapter = {
       job_type: row.job_type ?? null,
     }));
 
-    const invoices: CanonicalInvoice[] = (invoiceRows || []).map((row) => ({
+    const invoices: CanonicalInvoice[] = (invoicesResult.rows || []).map((row) => ({
       invoice_id: row.invoice_id,
       created_at: row.invoice_date,
       paid: row.invoice_status?.toLowerCase?.() === "paid",
@@ -56,7 +116,7 @@ export const jobberAdapter: ConnectorAdapter = {
       geo_postal: null,
     }));
 
-    const jobs: CanonicalJob[] = (jobRows || []).map((row) => ({
+    const jobs: CanonicalJob[] = (jobsResult.rows || []).map((row) => ({
       job_id: row.job_id,
       created_at: row.created_at ?? null,
       completed_at: row.end_at ?? null,
@@ -67,12 +127,19 @@ export const jobberAdapter: ConnectorAdapter = {
       job_status: row.job_status ?? null,
     }));
 
-    const clients: CanonicalClient[] = (clientRows || []).map((row) => ({
-      client_id: row.client_id,
-      created_at: row.created_at ?? null,
-      geo_city: null,
-      geo_postal: null,
-    }));
+    const clients: CanonicalClient[] = (clientsResult.rows || []).map(
+      (row: {
+        client_id: string;
+        created_at?: string | null;
+        geo_city?: string | null;
+        geo_postal?: string | null;
+      }) => ({
+        client_id: row.client_id,
+        created_at: row.created_at ?? null,
+        geo_city: sanitizeCity(row.geo_city ?? null),
+        geo_postal: sanitizePostal(row.geo_postal ?? null),
+      }),
+    );
 
     return {
       kind: "jobber",

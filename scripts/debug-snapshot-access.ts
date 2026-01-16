@@ -5,8 +5,8 @@
  * Run with: npx tsx scripts/debug-snapshot-access.ts <snapshot-id>
  */
 
-import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import { config } from "dotenv";
 
 // Load environment
 config({ path: ".env.local" });

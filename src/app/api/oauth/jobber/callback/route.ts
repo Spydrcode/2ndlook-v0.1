@@ -201,7 +201,7 @@ export async function GET(request: NextRequest) {
     if (!ingestionResult.success) {
       console.error("[JOBBER CALLBACK] Ingestion failed:", ingestionResult.error);
 
-      return errorResponse("jobber_ingest_failed", eventId);
+      return errorResponse(ingestionResult.error_code || "jobber_ingest_failed", eventId);
     }
 
     const sourceId = ingestionResult.source_id;

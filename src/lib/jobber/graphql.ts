@@ -1,220 +1,206 @@
-import { WINDOW_DAYS } from "@/lib/config/limits";
+import { sanitizeCity, sanitizePostal } from "@/lib/connectors/sanitize";
 import type { ClientRowInput } from "@/lib/ingest/normalize-clients";
 import type { InvoiceRowInput } from "@/lib/ingest/normalize-invoices";
 import type { JobRowInput } from "@/lib/ingest/normalize-jobs";
 import { normalizeEstimateStatus } from "@/lib/ingest/statuses";
 import type { CSVEstimateRow } from "@/types/2ndlook";
 
+import { JobberMissingScopesError } from "./errors";
+import { jobberGraphQL } from "./graphqlClient";
 import { getJobberAccessToken } from "./oauth";
 
-const JOBBER_GQL_VERSION = process.env.JOBBER_GQL_VERSION ?? "2025-04-16";
+const DEFAULT_PAGE_SIZE = 25;
+const TARGET_MAX_COST = 6000;
+const MAX_RECORDS = 100;
+const MAX_PAGES = 10;
 
-export interface JobberQuote {
-  id: string;
-  createdAt: string;
-  updatedAt?: string | null;
-  quoteNumber?: string | null;
-  quoteStatus?: string | null;
-  amounts?: { subtotal?: number | null } | null;
-  client?: { id?: string | null; name?: string | null } | null;
-  sentAt?: string | null;
-}
-
-interface JobberInvoice {
-  id: string;
-  createdAt: string;
-  issuedDate?: string | null;
-  dueDate?: string | null;
-  invoiceStatus: string;
-  amounts?: { total?: { amount?: string | number | null } | null } | null;
-  jobs?: { nodes?: Array<{ id: string }> } | null;
-  client?: { id?: string };
-}
-
-interface JobberJob {
-  id: string;
-  createdAt: string;
-  startAt?: string | null;
-  endAt?: string | null;
-  jobStatus?: string | null;
-  total?: number | string | null;
-  client?: { id?: string | null } | null;
-}
-
-interface JobberClient {
-  id: string;
-  createdAt: string;
-  updatedAt?: string | null;
-  isLead?: boolean | null;
-}
-
-export class JobberGraphQLError extends Error {
-  status?: number;
-  statusText?: string;
-  requestId?: string | null;
-  graphqlErrors?: unknown;
-  responseText?: string;
-
-  constructor(message: string, init?: Partial<JobberGraphQLError>) {
-    super(message);
-    this.name = "JobberGraphQLError";
-    Object.assign(this, init);
-  }
-}
-
-async function jobberGraphQLRequest<T>({
-  installationId,
-  query,
-  variables,
-}: {
+type PageArgs = {
   installationId: string;
-  query: string;
-  variables?: Record<string, unknown>;
-}): Promise<T> {
-  console.log("[JOBBER GRAPHQL] Getting access token for installation:", installationId);
-  const accessToken = await getJobberAccessToken(installationId);
-  if (!accessToken) {
-    console.error("[JOBBER GRAPHQL] Failed to get access token");
-    throw new Error("Failed to get Jobber access token");
-  }
+  sinceISO: string;
+  limit?: number;
+  maxPages?: number;
+  targetMaxCost?: number;
+};
 
-  const response = await fetch("https://api.getjobber.com/api/graphql", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      "X-JOBBER-GRAPHQL-VERSION": JOBBER_GQL_VERSION,
-    },
-    body: JSON.stringify({
-      query,
-      variables: variables ?? {},
-    }),
-  });
-
-  const requestId =
-    response.headers.get("x-request-id") || response.headers.get("x-amzn-requestid") || response.headers.get("cf-ray");
-  const text = await response.text();
-  let json: { data?: T; errors?: unknown };
-  try {
-    json = JSON.parse(text);
-  } catch (err) {
-    console.error("[JOBBER GRAPHQL] Failed to parse JSON response:", err, text);
-    throw new Error("Jobber API returned non-JSON response");
-  }
-
-  if (!response.ok) {
-    console.error("[JOBBER GRAPHQL] Non-OK response", {
-      status: response.status,
-      statusText: response.statusText,
-      requestId,
-      body: text?.slice(0, 2000),
-    });
-    throw new JobberGraphQLError(
-      `Jobber API error: ${response.status} ${response.statusText} :: ${text?.slice(0, 200)}`,
-      {
-        status: response.status,
-        statusText: response.statusText,
-        requestId,
-        responseText: text,
-      },
-    );
-  }
-
-  if (json.errors) {
-    console.error("[JOBBER GRAPHQL] GraphQL errors:", JSON.stringify(json.errors, null, 2), {
-      status: response.status,
-      requestId,
-      responseText: text,
-    });
-    throw new JobberGraphQLError("Jobber GraphQL returned errors", {
-      status: response.status,
-      statusText: response.statusText,
-      requestId,
-      graphqlErrors: json.errors,
-      responseText: text,
-    });
-  }
-
-  if (!json.data) {
-    throw new Error("Jobber API returned empty data");
-  }
-
-  return json.data;
+function adjustPageSize(current: number, requested?: number, maxCost?: number, target?: number, minSize = 5): number {
+  if (!requested || !maxCost) return current;
+  const targetCost = target ?? TARGET_MAX_COST;
+  if (requested <= targetCost) return current;
+  const scaled = Math.floor((current * targetCost) / requested);
+  return Math.max(minSize, scaled);
 }
 
-/**
- * Fetch quotes (estimates) from Jobber GraphQL API
- *
- * Returns data in CSVEstimateRow format for compatibility with shared normalization.
- * Field diet enforced: only id, dates, total, status
- * Filters: last 90 days, limit 100 records
- */
-export async function fetchEstimates(installationId: string): Promise<CSVEstimateRow[]> {
-  try {
-    // Calculate window start
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - WINDOW_DAYS);
-    const iso = ninetyDaysAgo.toISOString();
+export async function fetchQuotesPaged(args: PageArgs): Promise<{
+  rows: CSVEstimateRow[];
+  totalCost?: number;
+}> {
+  const accessToken = await getJobberAccessToken(args.installationId);
+  if (!accessToken) {
+    throw new JobberMissingScopesError("Missing Jobber access token");
+  }
 
-    // Use corrected Jobber GraphQL schema for version 2025-04-16
-    const query = `
-      query GetQuotes($after: ISO8601DateTime!) {
+  let after: string | null = null;
+  const rows: CSVEstimateRow[] = [];
+  const maxRecords = Math.min(args.limit ?? MAX_RECORDS, MAX_RECORDS);
+  let pageSize = Math.min(args.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
+  let pages = 0;
+  let totalCost = 0;
+
+  while (rows.length < maxRecords && pages < (args.maxPages ?? MAX_PAGES)) {
+    const queryWithLinks = `
+      query GetQuotes($after: String, $first: Int!, $since: ISO8601DateTime!) {
         quotes(
-          filter: { createdAt: { after: $after } }
-          first: 100
+          first: $first
+          after: $after
+          filter: { updatedAt: { after: $since } }
         ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
           nodes {
             id
             createdAt
             updatedAt
-            quoteNumber
             quoteStatus
             sentAt
-            amounts {
-              subtotal
-            }
-            client {
-              id
-              name
-            }
+            amounts { subtotal }
+            client { id }
+            job { id }
           }
         }
       }
     `;
 
-    const variables = { after: iso };
+    const queryMinimal = `
+      query GetQuotesMinimal($after: String, $first: Int!, $since: ISO8601DateTime!) {
+        quotes(
+          first: $first
+          after: $after
+          filter: { updatedAt: { after: $since } }
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            createdAt
+            updatedAt
+            quoteStatus
+            sentAt
+            amounts { subtotal }
+          }
+        }
+      }
+    `;
 
-    console.log(`[JOBBER GRAPHQL] Fetching quotes with version ${JOBBER_GQL_VERSION}...`);
-    const result = await jobberGraphQLRequest<{ quotes: { nodes: JobberQuote[] } }>({
-      installationId,
-      query,
-      variables,
-    });
+    let quoteResult: {
+      data: {
+        quotes: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            id: string;
+            createdAt: string;
+            updatedAt?: string | null;
+            quoteStatus?: string | null;
+            sentAt?: string | null;
+            amounts?: { subtotal?: number | string | null } | null;
+            client?: { id?: string | null } | null;
+            job?: { id?: string | null } | null;
+          }>;
+        };
+      };
+      cost?: { requested: number; max: number; available?: number };
+    } | null = null;
 
-    const quotes = result.quotes.nodes || [];
-
-    console.log("[JOBBER RAW RESPONSE] Total quotes found:", quotes.length);
-    if (quotes.length > 0) {
-      console.log("[JOBBER RAW RESPONSE] First quote sample:", JSON.stringify(quotes[0], null, 2));
+    try {
+      quoteResult = await jobberGraphQL<{
+        quotes: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            id: string;
+            createdAt: string;
+            updatedAt?: string | null;
+            quoteStatus?: string | null;
+            sentAt?: string | null;
+            amounts?: { subtotal?: number | string | null } | null;
+            client?: { id?: string | null } | null;
+            job?: { id?: string | null } | null;
+          }>;
+        };
+      }>(queryWithLinks, { after, first: pageSize, since: args.sinceISO }, accessToken, {
+        targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
+      });
+    } catch (err) {
+      // If missing scopes for client/job links, retry without them.
+      if (err instanceof JobberMissingScopesError) {
+        console.warn("[JOBBER] Missing scopes for quote links; retrying quotes without client/job fields.");
+        quoteResult = await jobberGraphQL<{
+          quotes: {
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            nodes: Array<{
+              id: string;
+              createdAt: string;
+              updatedAt?: string | null;
+              quoteStatus?: string | null;
+              sentAt?: string | null;
+              amounts?: { subtotal?: number | string | null } | null;
+            }>;
+          };
+        }>(queryMinimal, { after, first: pageSize, since: args.sinceISO }, accessToken, {
+          targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
+        });
+      } else {
+        throw err;
+      }
     }
 
-    // Map to CSVEstimateRow format
-    const estimateRows: CSVEstimateRow[] = quotes
-      .filter((quote) => {
-        const createdDate = new Date(quote.createdAt);
-        return createdDate >= ninetyDaysAgo;
-      })
-      .slice(0, 100)
-      .map((quote) => {
-        // Use amounts.subtotal instead of total.amount
+    if (!quoteResult) break;
+
+    const {
+      data,
+      cost,
+    }: {
+      data: {
+        quotes: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            id: string;
+            createdAt: string;
+            updatedAt?: string | null;
+            quoteStatus?: string | null;
+            sentAt?: string | null;
+            amounts?: { subtotal?: number | string | null } | null;
+            client?: { id?: string | null } | null;
+            job?: { id?: string | null } | null;
+          }>;
+        };
+      };
+      cost?: { requested: number; max: number; available?: number };
+    } = quoteResult;
+
+    if (cost) {
+      totalCost += cost.requested ?? 0;
+      pageSize = adjustPageSize(pageSize, cost.requested, cost.max, args.targetMaxCost);
+    }
+
+    const nodes = data.quotes.nodes || [];
+    const mapped = nodes.map(
+      (quote: {
+        id: string;
+        createdAt: string;
+        updatedAt?: string | null;
+        quoteStatus?: string | null;
+        sentAt?: string | null;
+        amounts?: { subtotal?: number | string | null } | null;
+        client?: { id?: string | null } | null;
+        job?: { id?: string | null } | null;
+      }) => {
         const amountRaw = quote.amounts?.subtotal ?? 0;
         const parsedAmount = typeof amountRaw === "string" ? parseFloat(amountRaw) : Number(amountRaw);
         const normalizedAmount = Number.isFinite(parsedAmount) ? parsedAmount : 0;
-
-        // Use quoteStatus instead of status
-        const normalizedStatus = normalizeJobberStatus(quote.quoteStatus ?? "unknown");
-
-        // Use sentAt as a proxy for when quote became active
+        const normalizedStatus = normalizeEstimateStatus(quote.quoteStatus ?? "unknown");
         const closedAt = quote.sentAt || null;
         const updatedAt = quote.updatedAt || closedAt || quote.createdAt;
 
@@ -226,170 +212,403 @@ export async function fetchEstimates(installationId: string): Promise<CSVEstimat
           amount: normalizedAmount,
           status: normalizedStatus,
           client_id: quote.client?.id ?? null,
-          job_type: undefined, // Not available in this schema version
+          job_id: quote.job?.id ?? null,
+          geo_city: null,
+          geo_postal: null,
         };
-      });
+      },
+    );
 
-    console.log("[JOBBER GRAPHQL] After filtering - estimateRows count:", estimateRows.length);
-    if (estimateRows.length > 0) {
-      console.log("[JOBBER GRAPHQL] First normalized estimate:", JSON.stringify(estimateRows[0], null, 2));
+    rows.push(...mapped);
+    pages += 1;
+
+    if (!data.quotes.pageInfo.hasNextPage || rows.length >= maxRecords) {
+      break;
     }
-    console.log("[JOBBER GRAPHQL] Returning estimates to caller");
-
-    return estimateRows;
-  } catch (error) {
-    console.error("[JOBBER GRAPHQL] Exception caught:", error);
-    console.error("[JOBBER GRAPHQL] Error stack:", error instanceof Error ? error.stack : "No stack");
-    throw error;
+    after = data.quotes.pageInfo.endCursor;
   }
+
+  return { rows: rows.slice(0, maxRecords), totalCost };
 }
 
-/**
- * Normalize Jobber quote status to 2ndlook canonical status
- */
-function normalizeJobberStatus(status: string): string {
-  return normalizeEstimateStatus(status);
+export async function fetchInvoicesPaged(args: PageArgs): Promise<{ rows: InvoiceRowInput[]; totalCost?: number }> {
+  const accessToken = await getJobberAccessToken(args.installationId);
+  if (!accessToken) {
+    throw new JobberMissingScopesError("Missing Jobber access token");
+  }
+
+  let after: string | null = null;
+  const rows: InvoiceRowInput[] = [];
+  const maxRecords = Math.min(args.limit ?? MAX_RECORDS, MAX_RECORDS);
+  let pageSize = Math.min(args.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
+  let pages = 0;
+  let totalCost = 0;
+
+  while (rows.length < maxRecords && pages < (args.maxPages ?? MAX_PAGES)) {
+    const query = `
+      query GetInvoices($after: String, $first: Int!, $since: ISO8601DateTime!) {
+        invoices(
+          first: $first
+          after: $after
+          filter: { updatedAt: { after: $since } }
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            createdAt
+            updatedAt
+            invoiceStatus
+            amounts { total { amount } }
+            client { id }
+          }
+        }
+      }
+    `;
+
+    const invoiceResult: {
+      data: {
+        invoices: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            id: string;
+            createdAt: string;
+            updatedAt?: string | null;
+            invoiceStatus: string;
+            amounts?: { total?: { amount?: number | string | null } | null } | null;
+            client?: { id?: string | null } | null;
+          }>;
+        };
+      };
+      cost?: { requested: number; max: number; available?: number };
+    } = await jobberGraphQL<{
+      invoices: {
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        nodes: Array<{
+          id: string;
+          createdAt: string;
+          updatedAt?: string | null;
+          invoiceStatus: string;
+          amounts?: { total?: { amount?: number | string | null } | null } | null;
+          client?: { id?: string | null } | null;
+        }>;
+      };
+    }>(query, { after, first: pageSize, since: args.sinceISO }, accessToken, {
+      targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
+    });
+
+    const { data, cost } = invoiceResult;
+
+    if (cost) {
+      totalCost += cost.requested ?? 0;
+      pageSize = adjustPageSize(pageSize, cost.requested, cost.max, args.targetMaxCost);
+    }
+
+    const nodes = data.invoices.nodes || [];
+    const mapped = nodes.map(
+      (invoice: {
+        id: string;
+        createdAt: string;
+        updatedAt?: string | null;
+        invoiceStatus: string;
+        amounts?: { total?: { amount?: number | string | null } | null } | null;
+        client?: { id?: string | null } | null;
+      }) => ({
+        invoice_id: invoice.id,
+        invoice_date: invoice.updatedAt || invoice.createdAt,
+        invoice_total:
+          invoice.amounts?.total?.amount !== undefined && invoice.amounts?.total?.amount !== null
+            ? invoice.amounts.total.amount
+            : 0,
+        invoice_status: invoice.invoiceStatus,
+        linked_estimate_id: null,
+      }),
+    );
+
+    rows.push(...mapped);
+    pages += 1;
+    if (!data.invoices.pageInfo.hasNextPage || rows.length >= maxRecords) break;
+    after = data.invoices.pageInfo.endCursor;
+  }
+
+  return { rows: rows.slice(0, maxRecords), totalCost };
 }
 
-/**
- * Fetch invoices from Jobber GraphQL API.
- * Returns rows ready for invoice normalization.
- */
-export async function fetchInvoices(installationId: string): Promise<InvoiceRowInput[]> {
-  const query = `
-    query GetInvoices {
-      invoices(first: 100) {
-        nodes {
-          id
-          createdAt
-          issuedDate
-          dueDate
-          invoiceStatus
-          amounts {
-            total {
-              amount
+export async function fetchJobsPaged(args: PageArgs): Promise<{ rows: JobRowInput[]; totalCost?: number }> {
+  const accessToken = await getJobberAccessToken(args.installationId);
+  if (!accessToken) {
+    throw new JobberMissingScopesError("Missing Jobber access token");
+  }
+
+  let after: string | null = null;
+  const rows: JobRowInput[] = [];
+  const maxRecords = Math.min(args.limit ?? MAX_RECORDS, MAX_RECORDS);
+  let pageSize = Math.min(args.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
+  let pages = 0;
+  let totalCost = 0;
+
+  while (rows.length < maxRecords && pages < (args.maxPages ?? MAX_PAGES)) {
+    const query = `
+      query GetJobs($after: String, $first: Int!, $since: ISO8601DateTime!) {
+        jobs(
+          first: $first
+          after: $after
+          filter: { updatedAt: { after: $since } }
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            createdAt
+            startAt
+            endAt
+            jobStatus
+            total
+            client { id }
+          }
+        }
+      }
+    `;
+
+    const jobResult: {
+      data: {
+        jobs: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            id: string;
+            createdAt: string;
+            startAt?: string | null;
+            endAt?: string | null;
+            jobStatus?: string | null;
+            total?: number | string | null;
+            client?: { id?: string | null } | null;
+          }>;
+        };
+      };
+      cost?: { requested: number; max: number; available?: number };
+    } = await jobberGraphQL<{
+      jobs: {
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        nodes: Array<{
+          id: string;
+          createdAt: string;
+          startAt?: string | null;
+          endAt?: string | null;
+          jobStatus?: string | null;
+          total?: number | string | null;
+          client?: { id?: string | null } | null;
+        }>;
+      };
+    }>(query, { after, first: pageSize, since: args.sinceISO }, accessToken, {
+      targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
+    });
+
+    const { data, cost } = jobResult;
+
+    if (cost) {
+      totalCost += cost.requested ?? 0;
+      pageSize = adjustPageSize(pageSize, cost.requested, cost.max, args.targetMaxCost);
+    }
+
+    const nodes = data.jobs.nodes || [];
+    const mapped = nodes.map(
+      (job: {
+        id: string;
+        createdAt: string;
+        startAt?: string | null;
+        endAt?: string | null;
+        jobStatus?: string | null;
+        total?: number | string | null;
+        client?: { id?: string | null } | null;
+      }) => ({
+        job_id: job.id,
+        created_at: job.createdAt,
+        start_at: job.startAt ?? null,
+        end_at: job.endAt ?? null,
+        job_status: job.jobStatus ?? undefined,
+        job_total: job.total ?? null,
+        client_id: job.client?.id ?? null,
+      }),
+    );
+
+    rows.push(...mapped);
+    pages += 1;
+    if (!data.jobs.pageInfo.hasNextPage || rows.length >= maxRecords) break;
+    after = data.jobs.pageInfo.endCursor;
+  }
+
+  return { rows: rows.slice(0, maxRecords), totalCost };
+}
+
+export async function fetchClientsPaged(args: PageArgs): Promise<{ rows: ClientRowInput[]; totalCost?: number }> {
+  const accessToken = await getJobberAccessToken(args.installationId);
+  if (!accessToken) {
+    throw new JobberMissingScopesError("Missing Jobber access token");
+  }
+
+  let after: string | null = null;
+  const rows: ClientRowInput[] = [];
+  const maxRecords = Math.min(args.limit ?? MAX_RECORDS, MAX_RECORDS);
+  let pageSize = Math.min(args.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
+  let pages = 0;
+  let totalCost = 0;
+
+  while (rows.length < maxRecords && pages < (args.maxPages ?? MAX_PAGES)) {
+    const queryWithAddress = `
+      query GetClients($after: String, $first: Int!, $since: ISO8601DateTime!) {
+        clients(
+          first: $first
+          after: $after
+          filter: { updatedAt: { after: $since } }
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            createdAt
+            updatedAt
+            isLead
+            addresses {
+              city
+              postalCode
             }
           }
-          jobs {
-            nodes { id }
+        }
+      }
+    `;
+
+    const queryWithoutAddress = `
+      query GetClientsNoAddress($after: String, $first: Int!, $since: ISO8601DateTime!) {
+        clients(
+          first: $first
+          after: $after
+          filter: { updatedAt: { after: $since } }
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
           }
-          client {
+          nodes {
             id
+            createdAt
+            updatedAt
+            isLead
           }
         }
       }
-    }
-  `;
+    `;
 
-  console.log("[JOBBER GRAPHQL] Fetching invoices from Jobber API...");
-  const result = await jobberGraphQLRequest<{ invoices?: { nodes?: JobberInvoice[] } }>({
-    installationId,
-    query,
-  });
+    let clientResult: {
+      data: {
+        clients: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            id: string;
+            createdAt: string;
+            updatedAt?: string | null;
+            isLead?: boolean | null;
+            addresses?: Array<{ city?: string | null; postalCode?: string | null }> | null;
+          }>;
+        };
+      };
+      cost?: { requested: number; max: number; available?: number };
+    } | null = null;
 
-  const invoices = result.invoices?.nodes ?? [];
-
-  console.log(`[JOBBER GRAPHQL] Invoices returned: ${invoices.length}`);
-  if (invoices.length > 0) {
-    console.log("[JOBBER GRAPHQL] First invoice sample:", JSON.stringify(invoices[0], null, 2));
-  }
-
-  const rows: InvoiceRowInput[] = invoices.map((invoice) => ({
-    invoice_id: invoice.id,
-    invoice_date: invoice.issuedDate || invoice.createdAt || invoice.dueDate || new Date().toISOString(),
-    invoice_total:
-      invoice.amounts?.total?.amount !== undefined && invoice.amounts?.total?.amount !== null
-        ? invoice.amounts.total.amount
-        : 0,
-    invoice_status: invoice.invoiceStatus,
-    linked_estimate_id: invoice.jobs?.nodes?.[0]?.id ?? null,
-  }));
-
-  return rows;
-}
-
-/**
- * Fetch jobs from Jobber GraphQL API.
- */
-export async function fetchJobs(installationId: string): Promise<JobRowInput[]> {
-  const query = `
-    query GetJobs {
-      jobs(first: 100) {
-        nodes {
-          id
-          createdAt
-          startAt
-          endAt
-          jobStatus
-          total
-          client { id }
-        }
+    try {
+      clientResult = await jobberGraphQL<{
+        clients: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            id: string;
+            createdAt: string;
+            updatedAt?: string | null;
+            isLead?: boolean | null;
+            addresses?: Array<{ city?: string | null; postalCode?: string | null }> | null;
+          }>;
+        };
+      }>(queryWithAddress, { after, first: pageSize, since: args.sinceISO }, accessToken, {
+        targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
+      });
+    } catch (err) {
+      // If scopes are too narrow for addresses, retry without address fields.
+      if (err instanceof JobberMissingScopesError) {
+        console.warn("[JOBBER] Missing address scopes; retrying clients without address fields.");
+        clientResult = await jobberGraphQL<{
+          clients: {
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            nodes: Array<{
+              id: string;
+              createdAt: string;
+              updatedAt?: string | null;
+              isLead?: boolean | null;
+            }>;
+          };
+        }>(queryWithoutAddress, { after, first: pageSize, since: args.sinceISO }, accessToken, {
+          targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
+        });
+      } else {
+        throw err;
       }
     }
-  `;
 
-  console.log("[JOBBER GRAPHQL] Fetching jobs from Jobber API...");
-  const result = await jobberGraphQLRequest<{ jobs?: { nodes?: JobberJob[] } }>({
-    installationId,
-    query,
-  });
+    if (!clientResult) break;
+    const {
+      data,
+      cost,
+    }: {
+      data: {
+        clients: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            id: string;
+            createdAt: string;
+            updatedAt?: string | null;
+            isLead?: boolean | null;
+            addresses?: Array<{ city?: string | null; postalCode?: string | null }> | null;
+          }>;
+        };
+      };
+      cost?: { requested: number; max: number; available?: number };
+    } = clientResult;
 
-  const jobs = result.jobs?.nodes ?? [];
-  console.log(`[JOBBER GRAPHQL] Jobs returned: ${jobs.length}`);
-
-  if (jobs.length > 0) {
-    console.log("[JOBBER GRAPHQL] First job sample:", JSON.stringify(jobs[0], null, 2));
-  }
-
-  const rows: JobRowInput[] = jobs.map((job) => ({
-    job_id: job.id,
-    created_at: job.createdAt,
-    start_at: job.startAt ?? null,
-    end_at: job.endAt ?? null,
-    job_status: job.jobStatus ?? undefined,
-    job_total: job.total ?? null,
-    client_id: job.client?.id ?? null,
-  }));
-
-  return rows;
-}
-
-/**
- * Fetch clients from Jobber GraphQL API.
- */
-export async function fetchClients(installationId: string): Promise<ClientRowInput[]> {
-  const query = `
-    query GetClients {
-      clients(first: 100) {
-        nodes {
-          id
-          createdAt
-          updatedAt
-          isLead
-        }
-      }
+    if (cost) {
+      totalCost += cost.requested ?? 0;
+      pageSize = adjustPageSize(pageSize, cost.requested, cost.max, args.targetMaxCost);
     }
-  `;
 
-  console.log("[JOBBER GRAPHQL] Fetching clients from Jobber API...");
-  const result = await jobberGraphQLRequest<{ clients?: { nodes?: JobberClient[] } }>({
-    installationId,
-    query,
-  });
+    const nodes = data.clients.nodes || [];
+    const mapped = nodes.map(
+      (client: {
+        id: string;
+        createdAt: string;
+        updatedAt?: string | null;
+        isLead?: boolean | null;
+        addresses?: Array<{ city?: string | null; postalCode?: string | null }> | null;
+      }) => {
+        const city = client.addresses?.[0]?.city ? sanitizeCity(client.addresses[0].city) : null;
+        const postal = client.addresses?.[0]?.postalCode ? sanitizePostal(client.addresses[0].postalCode) : null;
+        return {
+          client_id: client.id,
+          created_at: client.createdAt,
+          updated_at: client.updatedAt ?? null,
+          is_lead: client.isLead ?? null,
+          geo_city: city,
+          geo_postal: postal,
+        };
+      },
+    );
 
-  const clients = result.clients?.nodes ?? [];
-  console.log(`[JOBBER GRAPHQL] Clients returned: ${clients.length}`);
-
-  if (clients.length > 0) {
-    console.log("[JOBBER GRAPHQL] First client sample:", JSON.stringify(clients[0], null, 2));
+    rows.push(...mapped);
+    pages += 1;
+    if (!data.clients.pageInfo.hasNextPage || rows.length >= maxRecords) break;
+    after = data.clients.pageInfo.endCursor;
   }
 
-  const rows: ClientRowInput[] = clients.map((client) => ({
-    client_id: client.id,
-    created_at: client.createdAt,
-    updated_at: client.updatedAt ?? null,
-    is_lead: client.isLead ?? null,
-  }));
-
-  return rows;
+  return { rows: rows.slice(0, maxRecords), totalCost };
 }

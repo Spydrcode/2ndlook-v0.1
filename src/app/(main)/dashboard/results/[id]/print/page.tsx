@@ -49,7 +49,7 @@ export default async function PrintPage({ params }: PrintPageProps) {
     return (
       <div className="print-body">
         <div className="no-print mb-4">
-          <Link href={`/dashboard/results/${snapshotId}`} className="text-sm text-blue-600">
+          <Link href={`/dashboard/results/${snapshotId}`} className="text-blue-600 text-sm">
             <ArrowLeft className="mr-2 inline h-4 w-4" />
             Back
           </Link>
@@ -67,13 +67,13 @@ export default async function PrintPage({ params }: PrintPageProps) {
       <div className="print-body">
         <div className="no-print mb-4">
           <AutoPrint />
-          <Link href={`/dashboard/results/${snapshotId}`} className="text-sm text-blue-600">
+          <Link href={`/dashboard/results/${snapshotId}`} className="text-blue-600 text-sm">
             <ArrowLeft className="mr-2 inline h-4 w-4" />
             Back
           </Link>
         </div>
         <h1>2ndlook Snapshot</h1>
-        <p className="text-sm text-muted">Generated {formatDate(snapshot.generated_at)}</p>
+        <p className="text-muted text-sm">Generated {formatDate(snapshot.generated_at)}</p>
         <section>
           <h2>Insufficient data</h2>
           <p>
@@ -109,7 +109,7 @@ export default async function PrintPage({ params }: PrintPageProps) {
     <div className="print-body">
       <AutoPrint />
       <div className="no-print mb-4">
-        <Link href={`/dashboard/results/${snapshotId}`} className="text-sm text-blue-600">
+        <Link href={`/dashboard/results/${snapshotId}`} className="text-blue-600 text-sm">
           <ArrowLeft className="mr-2 inline h-4 w-4" />
           Back
         </Link>
@@ -117,10 +117,10 @@ export default async function PrintPage({ params }: PrintPageProps) {
 
       <header className="mb-6">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">2ndlook Snapshot</h1>
+          <h1 className="font-semibold text-2xl">2ndlook Snapshot</h1>
           <Badge variant={getConfidenceBadgeVariant(scores.confidence)}>{scores.confidence}</Badge>
         </div>
-        <p className="text-sm text-muted">Generated {formatDate(snapshot.generated_at)}</p>
+        <p className="text-muted text-sm">Generated {formatDate(snapshot.generated_at)}</p>
       </header>
 
       <section className="space-y-2">
@@ -151,7 +151,7 @@ export default async function PrintPage({ params }: PrintPageProps) {
         </p>
         {signals.status_breakdown && (
           <div>
-            <p className="text-sm font-medium">Status mix</p>
+            <p className="font-medium text-sm">Status mix</p>
             <ul className="list-disc pl-5 text-sm">
               {Object.entries(signals.status_breakdown).map(([status, count]) => (
                 <li key={status}>

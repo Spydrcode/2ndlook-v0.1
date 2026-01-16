@@ -7,12 +7,14 @@ import { MIN_MEANINGFUL_ESTIMATES_PROD, WINDOW_DAYS } from "@/lib/config/limits"
 import { getAdapter } from "@/lib/connectors/registry";
 import { runIngestFromPayload } from "@/lib/ingest/runIngest";
 import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
+import { JobberMissingScopesError, JobberRateLimitedError } from "@/lib/jobber/errors";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface IngestJobberResult {
   success: boolean;
   source_id?: string;
   error?: string;
+  error_code?: string;
   meaningful_estimates?: number;
   required_min?: number;
   status?: "ingested";
@@ -96,10 +98,24 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
       // Rollback: delete source on fetch/normalize failure
       console.error("Ingestion failed:", fetchError);
 
-      const err = fetchError as any;
+      const err = fetchError as unknown;
+      const errorCode =
+        fetchError instanceof JobberRateLimitedError
+          ? "jobber_rate_limited"
+          : fetchError instanceof JobberMissingScopesError
+            ? "jobber_missing_scopes"
+            : "jobber_ingest_failed";
+      const friendlyError =
+        errorCode === "jobber_rate_limited"
+          ? "Jobber rate-limited the sync. Please retry in about a minute."
+          : errorCode === "jobber_missing_scopes"
+            ? "Jobber permissions are incomplete; please reconnect to approve invoices/jobs/clients."
+            : err?.message?.includes?.("empty data")
+              ? "Jobber returned no data. Ensure you have recent quotes and that permissions are approved, then reconnect."
+              : (err?.message ?? String(fetchError));
       const errorDetails = {
         ok: false,
-        error: err?.message ?? String(fetchError),
+        error: friendlyError,
         name: err?.name,
         stack: err?.stack,
         status: err?.status,
@@ -125,6 +141,7 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
       return {
         success: false,
         error: errorDetails.error,
+        error_code: errorCode,
       };
     }
   } catch (err) {
@@ -134,11 +151,27 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
       error: err instanceof Error ? err.message : "Unexpected ingestion error",
       name: err instanceof Error ? err.name : undefined,
       stack: err instanceof Error ? err.stack : undefined,
-      status: (err as any)?.status,
-      statusText: (err as any)?.statusText,
-      requestId: (err as any)?.requestId,
-      graphqlErrors: (err as any)?.graphqlErrors,
-      responseText: (err as any)?.responseText ? String((err as any).responseText).slice(0, 2000) : undefined,
+      status:
+        typeof err === "object" && err !== null && "status" in err ? (err as { status?: unknown }).status : undefined,
+      statusText:
+        typeof err === "object" && err !== null && "statusText" in err
+          ? (err as { statusText?: unknown }).statusText
+          : undefined,
+      requestId:
+        typeof err === "object" && err !== null && "requestId" in err
+          ? (err as { requestId?: unknown }).requestId
+          : undefined,
+      graphqlErrors:
+        typeof err === "object" && err !== null && "graphqlErrors" in err
+          ? (err as { graphqlErrors?: unknown }).graphqlErrors
+          : undefined,
+      responseText:
+        typeof err === "object" &&
+        err !== null &&
+        "responseText" in err &&
+        (err as { responseText?: unknown }).responseText
+          ? String((err as { responseText?: unknown }).responseText).slice(0, 2000)
+          : undefined,
     };
     if (eventId) {
       try {

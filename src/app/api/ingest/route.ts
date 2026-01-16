@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { MIN_MEANINGFUL_ESTIMATES_PROD, WINDOW_DAYS } from "@/lib/config/limits";
+import { WINDOW_DAYS } from "@/lib/config/limits";
 import { sanitizeCity, sanitizeMoney, sanitizePostal } from "@/lib/connectors/sanitize";
 import type { CanonicalEstimate, ConnectorPayload } from "@/lib/connectors/types";
 import { runIngestFromPayload } from "@/lib/ingest/runIngest";

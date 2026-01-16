@@ -5,8 +5,8 @@
  * Usage: npx tsx scripts/backfill-source-installations.ts <installation-id>
  */
 
-import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import { config } from "dotenv";
 
 config({ path: ".env.local" });
 

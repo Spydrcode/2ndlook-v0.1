@@ -207,7 +207,7 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
           <CardDescription>Pick one move at a time and keep it calm.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+          <ul className="list-disc space-y-1 pl-5 text-muted-foreground text-sm">
             {next_steps.slice(0, 3).map((item) => (
               <li key={item.label}>{item.label}</li>
             ))}
