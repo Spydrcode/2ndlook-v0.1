@@ -171,10 +171,18 @@ export default function ConnectPage() {
       return index === -1 ? Number.MAX_SAFE_INTEGER : index;
     };
 
-    return registry
+    const filtered = registry
       .filter((connector) => connector.isImplemented && oauthTools.includes(connector.tool))
       .slice()
       .sort((a, b) => rank(a.tool) - rank(b.tool));
+
+    const deduped = new Map<string, (typeof filtered)[number]>();
+    for (const connector of filtered) {
+      if (deduped.has(connector.tool)) continue;
+      deduped.set(connector.tool, connector);
+    }
+
+    return Array.from(deduped.values());
   }, []);
 
   const eventIdFromUrl = searchParams.get("event_id");
