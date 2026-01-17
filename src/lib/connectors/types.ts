@@ -50,6 +50,16 @@ export type CanonicalJob = {
   job_status?: string | null;
 };
 
+export type CanonicalPayment = {
+  payment_id: string;
+  created_at: string;
+  amount: number;
+  currency?: string | null;
+  payment_type?: string | null;
+  invoice_id?: string | null;
+  client_id?: string | null;
+};
+
 export type ConnectorPayload = {
   kind: ConnectorKind;
   generated_at: string;
@@ -59,11 +69,13 @@ export type ConnectorPayload = {
     max_invoices: number;
     max_clients: number;
     max_jobs: number;
+    max_payments?: number;
   };
   clients: CanonicalClient[];
   estimates: CanonicalEstimate[];
   invoices: CanonicalInvoice[];
   jobs: CanonicalJob[];
+  payments?: CanonicalPayment[];
 };
 
 export type ConnectorAdapter = {

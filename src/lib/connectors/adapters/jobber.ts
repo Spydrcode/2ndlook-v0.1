@@ -5,14 +5,22 @@ import type {
   CanonicalEstimate,
   CanonicalInvoice,
   CanonicalJob,
+  CanonicalPayment,
   ConnectorAdapter,
   ConnectorPayload,
 } from "@/lib/connectors/types";
 import type { ClientRowInput } from "@/lib/ingest/normalize-clients";
 import type { InvoiceRowInput } from "@/lib/ingest/normalize-invoices";
 import type { JobRowInput } from "@/lib/ingest/normalize-jobs";
+import type { PaymentRowInput } from "@/lib/ingest/normalize-payments";
 import { JobberMissingScopesError } from "@/lib/jobber/errors";
-import { fetchClientsPaged, fetchInvoicesPaged, fetchJobsPaged, fetchQuotesPaged } from "@/lib/jobber/graphql";
+import {
+  fetchClientsPaged,
+  fetchInvoicesPaged,
+  fetchJobsPaged,
+  fetchPaymentsPaged,
+  fetchQuotesPaged,
+} from "@/lib/jobber/graphql";
 
 /**
  * Jobber adapter: maps Jobber GraphQL outputs to canonical connector payload.
@@ -39,6 +47,7 @@ export const jobberAdapter: ConnectorAdapter = {
     let invoicesResult: { rows: InvoiceRowInput[]; totalCost?: number } = { rows: [], totalCost: 0 };
     let jobsResult: { rows: JobRowInput[]; totalCost?: number } = { rows: [], totalCost: 0 };
     let clientsResult: { rows: ClientRowInput[]; totalCost?: number } = { rows: [], totalCost: 0 };
+    let paymentsResult: { rows: PaymentRowInput[]; totalCost?: number } = { rows: [], totalCost: 0 };
     let missingScopes: string[] = [];
 
     try {
@@ -87,6 +96,23 @@ export const jobberAdapter: ConnectorAdapter = {
         missingScopes = [...missingScopes, ...err.missing];
         console.warn("[JOBBER] Missing scopes for clients; continuing without clients:", err);
         clientsResult = { rows: [], totalCost: 0 };
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      paymentsResult = await fetchPaymentsPaged({
+        installationId: args.oauth_connection_id,
+        sinceISO,
+        limit: args.limits.max_payments ?? 25,
+        targetMaxCost: 6000,
+      });
+    } catch (err) {
+      if (err instanceof JobberMissingScopesError) {
+        missingScopes = [...missingScopes, ...err.missing];
+        console.warn("[JOBBER] Missing scopes for payments; continuing without payments:", err);
+        paymentsResult = { rows: [], totalCost: 0 };
       } else {
         throw err;
       }
@@ -144,6 +170,16 @@ export const jobberAdapter: ConnectorAdapter = {
       }),
     );
 
+    const payments: CanonicalPayment[] = (paymentsResult.rows || []).map((row) => ({
+      payment_id: row.payment_id,
+      created_at: row.payment_date,
+      amount: sanitizeMoney(row.payment_total),
+      currency: null,
+      payment_type: row.payment_type ?? null,
+      invoice_id: row.invoice_id ?? null,
+      client_id: row.client_id ?? null,
+    }));
+
     return {
       kind: "jobber",
       generated_at: new Date().toISOString(),
@@ -153,6 +189,7 @@ export const jobberAdapter: ConnectorAdapter = {
       estimates,
       invoices,
       jobs,
+      payments,
     };
   },
 };

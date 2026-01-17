@@ -24,6 +24,7 @@ export interface IngestJobberResult {
   invoices_kept?: number;
   jobs_kept?: number;
   clients_kept?: number;
+  payments_kept?: number;
 }
 
 /**
@@ -63,6 +64,7 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
           max_invoices: 100,
           max_clients: 100,
           max_jobs: 100,
+          max_payments: 100,
         },
       });
 
@@ -88,6 +90,7 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
               invoices: ingestResult.invoices_kept,
               jobs: ingestResult.jobs_kept,
               clients: ingestResult.clients_kept,
+              payments: ingestResult.payments_kept,
             },
           });
         } catch (logError) {
@@ -105,6 +108,7 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
         invoices_kept: ingestResult.invoices_kept,
         jobs_kept: ingestResult.jobs_kept,
         clients_kept: ingestResult.clients_kept,
+        payments_kept: ingestResult.payments_kept,
       };
     } catch (fetchError) {
       // Rollback: delete source on fetch/normalize failure
@@ -130,7 +134,7 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
         errorCode === "jobber_rate_limited"
           ? "Jobber rate-limited the sync. Please retry in about a minute."
           : errorCode === "jobber_missing_scopes"
-            ? "Jobber permissions are incomplete; please reconnect to approve invoices/jobs/clients."
+            ? "Jobber permissions are incomplete; please reconnect to approve invoices/jobs/clients/payments."
             : err?.message?.includes?.("empty data")
               ? "Jobber returned no data. Ensure you have recent quotes and that permissions are approved, then reconnect."
               : (err?.message ?? String(fetchError));
@@ -145,6 +149,8 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
         graphqlErrors: err?.graphqlErrors,
         responseText: err?.responseText ? String(err.responseText).slice(0, 2000) : undefined,
         granted_scopes: connection?.scopes ?? null,
+        build_id: process.env.VERCEL_DEPLOYMENT_ID ?? null,
+        git_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
       };
 
       if (eventId) {
@@ -194,6 +200,8 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
         (err as { responseText?: unknown }).responseText
           ? String((err as { responseText?: unknown }).responseText).slice(0, 2000)
           : undefined,
+      build_id: process.env.VERCEL_DEPLOYMENT_ID ?? null,
+      git_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
     };
     if (eventId) {
       try {

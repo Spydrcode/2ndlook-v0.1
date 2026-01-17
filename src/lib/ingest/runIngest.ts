@@ -5,6 +5,7 @@ import { normalizeClientsAndStore } from "@/lib/ingest/normalize-clients";
 import { normalizeAndStore } from "@/lib/ingest/normalize-estimates";
 import { normalizeInvoicesAndStore } from "@/lib/ingest/normalize-invoices";
 import { normalizeJobsAndStore } from "@/lib/ingest/normalize-jobs";
+import { normalizePaymentsAndStore } from "@/lib/ingest/normalize-payments";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { CSVEstimateRow } from "@/types/2ndlook";
 
@@ -22,6 +23,7 @@ export interface RunIngestResult {
   invoices_kept: number;
   jobs_kept: number;
   clients_kept: number;
+  payments_kept: number;
 }
 
 /**
@@ -100,10 +102,20 @@ export async function runIngestFromPayload(
       client_id: job.client_id ?? null,
     }));
 
+    const paymentRows = (payload.payments || []).map((payment) => ({
+      payment_id: payment.payment_id,
+      payment_date: payment.created_at,
+      payment_total: sanitizeMoney(payment.amount),
+      payment_type: payment.payment_type ?? "unknown",
+      invoice_id: payment.invoice_id ?? null,
+      client_id: payment.client_id ?? null,
+    }));
+
     const { kept, rejected, meaningful } = await normalizeAndStore(supabase, finalSourceId, estimateRows);
     const { kept: invoices_kept } = await normalizeInvoicesAndStore(supabase, finalSourceId, invoiceRows);
     const { kept: jobs_kept } = await normalizeJobsAndStore(supabase, finalSourceId, jobRows);
     const { kept: clients_kept } = await normalizeClientsAndStore(supabase, finalSourceId, clientRows);
+    const { kept: payments_kept } = await normalizePaymentsAndStore(supabase, finalSourceId, paymentRows);
 
     await supabase
       .from("sources")
@@ -117,12 +129,22 @@ export async function runIngestFromPayload(
             invoices: invoices_kept,
             jobs: jobs_kept,
             clients: clients_kept,
+            payments: payments_kept,
           },
         },
       })
       .eq("id", finalSourceId);
 
-    return { source_id: finalSourceId, kept, rejected, meaningful, invoices_kept, jobs_kept, clients_kept };
+    return {
+      source_id: finalSourceId,
+      kept,
+      rejected,
+      meaningful,
+      invoices_kept,
+      jobs_kept,
+      clients_kept,
+      payments_kept,
+    };
   } catch (error) {
     if (createdSource) {
       await supabase.from("sources").delete().eq("id", sourceId);

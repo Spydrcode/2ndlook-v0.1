@@ -74,6 +74,18 @@ export interface InvoiceNormalized {
   created_at?: string;
 }
 
+export interface PaymentNormalized {
+  id: string;
+  payment_id: string;
+  source_id: string;
+  payment_date: string; // ISO 8601
+  payment_total: number;
+  payment_type: string;
+  invoice_id?: string | null;
+  client_id?: string | null;
+  created_at?: string;
+}
+
 export interface JobNormalized {
   id: string;
   job_id: string;

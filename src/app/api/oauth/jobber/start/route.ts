@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     // Validate required environment variables
     const clientId = process.env.JOBBER_CLIENT_ID;
     const redirectUri = process.env.JOBBER_REDIRECT_URI;
-    const scopes = process.env.JOBBER_SCOPES || "quotes:read invoices:read jobs:read clients:read";
+    const scopes = process.env.JOBBER_SCOPES || "quotes:read invoices:read jobs:read clients:read payments:read";
 
     if (!clientId || !redirectUri) {
       console.error("Missing Jobber OAuth configuration");

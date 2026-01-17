@@ -2,6 +2,7 @@ import { sanitizeCity, sanitizePostal } from "@/lib/connectors/sanitize";
 import type { ClientRowInput } from "@/lib/ingest/normalize-clients";
 import type { InvoiceRowInput } from "@/lib/ingest/normalize-invoices";
 import type { JobRowInput } from "@/lib/ingest/normalize-jobs";
+import type { PaymentRowInput } from "@/lib/ingest/normalize-payments";
 import { normalizeEstimateStatus } from "@/lib/ingest/statuses";
 import type { CSVEstimateRow } from "@/types/2ndlook";
 
@@ -721,6 +722,109 @@ export async function fetchClientsPaged(args: PageArgs): Promise<{ rows: ClientR
     pages += 1;
     if (!data.clients.pageInfo.hasNextPage || rows.length >= maxRecords) break;
     after = data.clients.pageInfo.endCursor;
+  }
+
+  return { rows: rows.slice(0, maxRecords), totalCost };
+}
+
+export async function fetchPaymentsPaged(args: PageArgs): Promise<{ rows: PaymentRowInput[]; totalCost?: number }> {
+  const accessToken = await getJobberAccessToken(args.installationId);
+  if (!accessToken) {
+    throw new JobberMissingScopesError("Missing Jobber access token");
+  }
+
+  let after: string | null = null;
+  const rows: PaymentRowInput[] = [];
+  const maxRecords = Math.min(args.limit ?? MAX_RECORDS, MAX_RECORDS);
+  let pageSize = Math.min(args.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
+  let pages = 0;
+  let totalCost = 0;
+
+  while (rows.length < maxRecords && pages < (args.maxPages ?? MAX_PAGES)) {
+    const query = `
+      query GetPaymentRecords($after: String, $first: Int!, $since: ISO8601DateTime!) {
+        paymentRecords(
+          first: $first
+          after: $after
+          filter: { entryDate: { after: $since }, paymentType: JOBBER_PAYMENTS }
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            entryDate
+            amount
+            paymentType
+            invoice { id }
+            client { id }
+          }
+        }
+      }
+    `;
+
+    const paymentResult: {
+      data: {
+        paymentRecords: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            id: string;
+            entryDate: string;
+            amount: number | string;
+            paymentType?: string | null;
+            invoice?: { id?: string | null } | null;
+            client?: { id?: string | null } | null;
+          }>;
+        };
+      };
+      cost?: { requested: number; max: number; available?: number };
+    } = await jobberGraphQL<{
+      paymentRecords: {
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        nodes: Array<{
+          id: string;
+          entryDate: string;
+          amount: number | string;
+          paymentType?: string | null;
+          invoice?: { id?: string | null } | null;
+          client?: { id?: string | null } | null;
+        }>;
+      };
+    }>(query, { after, first: pageSize, since: args.sinceISO }, accessToken, {
+      targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
+    });
+
+    const { data, cost } = paymentResult;
+
+    if (cost) {
+      totalCost += cost.requested ?? 0;
+      pageSize = adjustPageSize(pageSize, cost.requested, cost.max, args.targetMaxCost);
+    }
+
+    const nodes = data.paymentRecords.nodes || [];
+    const mapped = nodes.map(
+      (payment: {
+        id: string;
+        entryDate: string;
+        amount: number | string;
+        paymentType?: string | null;
+        invoice?: { id?: string | null } | null;
+        client?: { id?: string | null } | null;
+      }) => ({
+        payment_id: payment.id,
+        payment_date: payment.entryDate,
+        payment_total: payment.amount,
+        payment_type: payment.paymentType ?? "unknown",
+        invoice_id: payment.invoice?.id ?? null,
+        client_id: payment.client?.id ?? null,
+      }),
+    );
+
+    rows.push(...mapped);
+    pages += 1;
+    if (!data.paymentRecords.pageInfo.hasNextPage || rows.length >= maxRecords) break;
+    after = data.paymentRecords.pageInfo.endCursor;
   }
 
   return { rows: rows.slice(0, maxRecords), totalCost };

@@ -209,10 +209,10 @@ export default function ConnectPage() {
       jobber_invalid_tokens: "Invalid tokens received from Jobber. Please try again.",
       jobber_db_error: "Failed to save connection details. Please try again.",
       jobber_ingest_failed:
-        "We couldn't pull your Jobber data (quotes/invoices/jobs/clients). Please try again. If it keeps failing, open Debug Details below.",
+        "We couldn't pull your Jobber data (quotes/invoices/jobs/clients/payments). Please try again. If it keeps failing, open Debug Details below.",
       jobber_rate_limited: "Jobber rate-limited the sync. Please try again in ~60 seconds.",
       jobber_missing_scopes:
-        "Reconnect Jobber to approve the required permissions. If it persists, confirm the Jobber app scopes include quotes, invoices, jobs, and clients.",
+        "Reconnect Jobber to approve the required permissions. If it persists, confirm the Jobber app scopes include quotes, invoices, jobs, clients, and payments.",
       jobber_min_estimates: `Minimum 25 meaningful estimates required. Jobber returned fewer than 25 sent/accepted/converted estimates from the last ${WINDOW_DAYS} days.`,
       jobber_insufficient_data: `Connected to Jobber, but we found only ${count || 0} meaningful estimates. 2ndlook needs at least ${required} sent/accepted/converted estimates for a full snapshot. Create/send more estimates in Jobber, then reconnect.`,
       jobber_config_error: "OAuth configuration error. Please contact support.",
@@ -307,7 +307,10 @@ export default function ConnectPage() {
                         </p>
                       )}
                       {isMissingScopesError && (
-                        <p>Your Jobber connection needs updated permissions to pull invoices, jobs, and clients.</p>
+                        <p>
+                          Your Jobber connection needs updated permissions to pull invoices, jobs, clients, and
+                          payments.
+                        </p>
                       )}
                     </div>
                   )}
