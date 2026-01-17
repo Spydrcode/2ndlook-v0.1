@@ -6,6 +6,26 @@ import { createSnapshotRecord } from "@/lib/snapshot/createSnapshot";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { SnapshotRequest, SnapshotResponse } from "@/types/2ndlook";
 
+function normalizeSnapshotError(error: unknown): { status: number; message: string } {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+
+  if (lower.includes("source must be bucketed")) {
+    return { status: 400, message };
+  }
+  if (lower.includes("no buckets found")) {
+    return { status: 400, message: "Source bucket data is missing. Please re-run ingest." };
+  }
+  if (lower.includes("invalid source_id")) {
+    return { status: 403, message: "Invalid source_id" };
+  }
+  if (lower.includes('null value in column "user_id"')) {
+    return { status: 500, message: "Snapshot schema requires user_id. Apply no-login migration." };
+  }
+
+  return { status: 500, message: "Unable to generate snapshot. Please try again." };
+}
+
 function isSnapshotSchemaMismatch(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
@@ -14,12 +34,14 @@ function isSnapshotSchemaMismatch(error: unknown): boolean {
     lower.includes('column "input_summary"') ||
     lower.includes('column "error"') ||
     lower.includes('null value in column "result"') ||
+    lower.includes('null value in column "user_id"') ||
     lower.includes("snapshots_status_check") ||
     lower.includes("snapshots_estimate_count_check")
   );
 }
 
 export async function POST(request: NextRequest) {
+  const eventId = crypto.randomUUID();
   try {
     const installationId = await getOrCreateInstallationId();
     const supabase = createAdminClient();
@@ -58,17 +80,28 @@ export async function POST(request: NextRequest) {
       if (isSnapshotSchemaMismatch(createError)) {
         console.warn("[Snapshot API] Snapshot schema mismatch; falling back to deterministic snapshot.", {
           source_id,
+          event_id: eventId,
           error: createError instanceof Error ? createError.message : "unknown",
         });
 
-        const { runDeterministicSnapshot } = await import("@/lib/snapshot/deterministic");
-        const result = await runDeterministicSnapshot({
-          source_id,
-          installation_id: installationId,
-        });
-        snapshot_id = result.snapshot_id;
+        try {
+          const { runDeterministicSnapshot } = await import("@/lib/snapshot/deterministic");
+          const result = await runDeterministicSnapshot({
+            source_id,
+            installation_id: installationId,
+          });
+          snapshot_id = result.snapshot_id;
 
-        return NextResponse.json({ snapshot_id }, { status: 200 });
+          return NextResponse.json({ snapshot_id }, { status: 200 });
+        } catch (fallbackError) {
+          const normalized = normalizeSnapshotError(fallbackError);
+          console.error("[Snapshot API] Deterministic fallback failed:", {
+            source_id,
+            event_id: eventId,
+            error: fallbackError instanceof Error ? fallbackError.message : "unknown",
+          });
+          return NextResponse.json({ error: normalized.message, event_id: eventId }, { status: normalized.status });
+        }
       }
 
       throw createError;
@@ -101,9 +134,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("[Snapshot API] Fatal error:", {
+      event_id: eventId,
       error: error instanceof Error ? error.message : "Unknown error",
     });
 
-    return NextResponse.json({ error: "Unable to generate snapshot. Please try again." }, { status: 500 });
+    const normalized = normalizeSnapshotError(error);
+    return NextResponse.json({ error: normalized.message, event_id: eventId }, { status: normalized.status });
   }
 }
