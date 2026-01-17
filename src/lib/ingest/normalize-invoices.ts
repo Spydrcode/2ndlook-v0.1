@@ -3,6 +3,8 @@
  * Applies 90 day window, 100 record cap, and canonical status mapping.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { MAX_INVOICE_RECORDS, WINDOW_DAYS } from "@/lib/config/limits";
 import { normalizeInvoiceStatus } from "@/lib/ingest/statuses";
 import type { InvoiceNormalized } from "@/types/2ndlook";
@@ -25,8 +27,7 @@ export interface NormalizeInvoicesResult {
  * Enforces: 90 day window (by invoice_date) and max 100 records.
  */
 export async function normalizeInvoicesAndStore(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   sourceId: string,
   rows: InvoiceRowInput[],
 ): Promise<NormalizeInvoicesResult> {

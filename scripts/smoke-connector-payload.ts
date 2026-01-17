@@ -14,14 +14,14 @@ import type { ConnectorPayload } from "@/lib/connectors/types";
 import { runIngestFromPayload } from "@/lib/ingest/runIngest";
 import type { EstimateNormalized } from "@/types/2ndlook";
 
-type TableStore = Record<string, any[]>;
+type TableStore = Record<string, unknown[]>;
 
 function createMockSupabase(db: TableStore) {
   return {
     from(table: string) {
       db[table] ??= [];
       return {
-        insert: (rows: any) => {
+        insert: (rows: unknown) => {
           const incoming = Array.isArray(rows) ? rows : [rows];
           const inserted = incoming.map((row, idx) => ({
             ...row,
@@ -37,7 +37,7 @@ function createMockSupabase(db: TableStore) {
             single: async () => ({ data: inserted[0], error: null }),
           };
         },
-        update: (data: any) => ({
+        update: (data: unknown) => ({
           eq: async (_col: string, value: string) => {
             db[table] = db[table].map((row) => (row.id === value ? { ...row, ...data } : row));
             return { data: null, error: null };

@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
 import { sanitizeCity, sanitizeMoney, sanitizePostal } from "@/lib/connectors/sanitize";
 import type { ConnectorPayload } from "@/lib/connectors/types";
@@ -12,7 +14,7 @@ import type { CSVEstimateRow } from "@/types/2ndlook";
 export interface RunIngestOptions {
   sourceId?: string;
   sourceName?: string;
-  supabase?: any; // Allow stubbing in tests
+  supabase?: SupabaseClient; // Allow stubbing in tests
 }
 
 export interface RunIngestResult {

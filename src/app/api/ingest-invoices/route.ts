@@ -71,7 +71,9 @@ export async function POST(request: NextRequest) {
           invoice_status: row.invoice_status,
           linked_estimate_id: row.linked_estimate_id || null,
         });
-      } catch {}
+      } catch {
+        /* intentionally ignored */
+      }
     }
 
     const { kept, rejected } = await normalizeInvoicesAndStore(supabase, source_id, invoices);

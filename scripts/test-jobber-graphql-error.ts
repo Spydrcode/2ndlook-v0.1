@@ -56,12 +56,14 @@ async function testJobberGraphQLError() {
     console.log("   Schema:", Object.keys(allConnections[0]));
     console.log(
       "   Connections:",
-      allConnections.map((c: any) => `${c.provider} (${c.installation_id})`),
+      allConnections.map((c: { provider: string; installation_id: string }) => `${c.provider} (${c.installation_id})`),
     );
   }
 
   // Now find a Jobber connection (check both 'tool' and 'provider' fields)
-  const jobberConnection = allConnections?.find((c: any) => c.tool === "jobber" || c.provider === "jobber");
+  const jobberConnection = allConnections?.find(
+    (c: { tool?: string; provider?: string }) => c.tool === "jobber" || c.provider === "jobber",
+  );
 
   if (!jobberConnection) {
     console.error("❌ No Jobber OAuth connection found.");
@@ -78,30 +80,45 @@ async function testJobberGraphQLError() {
 
   try {
     // Import the graphql module which uses JOBBER_GQL_VERSION from env
-    const { fetchEstimates } = await import("../src/lib/jobber/graphql");
-
-    const result = await fetchEstimates(jobberConnection.installation_id);
+    const { fetchQuotesPaged } = await import("../src/lib/jobber/graphql");
+    // Try calling fetchQuotesPaged with invalid version
+    const args = { installationId: jobberConnection.installation_id, sinceISO: new Date(0).toISOString() };
+    const result = await fetchQuotesPaged(args);
 
     console.log("✅ Unexpected success! Got result:", result);
     console.log("\n⚠️  Expected an error with invalid version, but call succeeded.");
     console.log("   This may mean the version is actually valid, or Jobber is lenient.");
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.log("❌ GraphQL call failed (as expected)\n");
     console.log("📋 Error object details:");
-    console.log("   name:", err.name);
-    console.log("   message:", err.message);
-    console.log("   status:", err.status);
-    console.log("   statusText:", err.statusText);
-    console.log("   requestId:", err.requestId);
-    console.log("   graphqlErrors:", err.graphqlErrors ? "present" : "null");
-    console.log("   responseText (first 500 chars):", err.responseText?.slice(0, 500));
+    if (typeof err === "object" && err !== null) {
+      const errorObj = err as { [key: string]: unknown };
+      const name = typeof errorObj.name === "string" ? errorObj.name : "";
+      const message = typeof errorObj.message === "string" ? errorObj.message : "";
+      const status = errorObj.status ?? "";
+      const statusText = typeof errorObj.statusText === "string" ? errorObj.statusText : "";
+      const requestId = typeof errorObj.requestId === "string" ? errorObj.requestId : "";
+      const graphqlErrors = errorObj.graphqlErrors ? "present" : "null";
+      const responseText =
+        typeof errorObj.responseText === "string" ? (errorObj.responseText as string).slice(0, 500) : "";
 
-    console.log("\n✅ Error logging test complete!");
-    console.log("\n📝 Verification checklist:");
-    console.log("   ✓ status: ", err.status ? "✅" : "❌");
-    console.log("   ✓ statusText: ", err.statusText ? "✅" : "❌");
-    console.log("   ✓ body/responseText: ", err.responseText ? "✅" : "❌");
-    console.log("   ✓ request-id: ", err.requestId ? "✅" : "❌");
+      console.log("   name:", name);
+      console.log("   message:", message);
+      console.log("   status:", status);
+      console.log("   statusText:", statusText);
+      console.log("   requestId:", requestId);
+      console.log("   graphqlErrors:", graphqlErrors);
+      console.log("   responseText (first 500 chars):", responseText);
+
+      console.log("\n✅ Error logging test complete!");
+      console.log("\n📝 Verification checklist:");
+      console.log("   ✓ status: ", status ? "✅" : "❌");
+      console.log("   ✓ statusText: ", statusText ? "✅" : "❌");
+      console.log("   ✓ body/responseText: ", responseText ? "✅" : "❌");
+      console.log("   ✓ request-id: ", requestId ? "✅" : "❌");
+    } else {
+      console.log("   Error is not an object:", err);
+    }
   }
 }
 

@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       estimates: rows,
     };
 
-    const { kept, rejected, meaningful } = await runIngestFromPayload(payload, installationId, {
+    const { kept, rejected } = await runIngestFromPayload(payload, installationId, {
       sourceId,
       sourceName: "File Upload",
       supabase,

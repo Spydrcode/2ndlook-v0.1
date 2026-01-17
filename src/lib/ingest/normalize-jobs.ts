@@ -3,6 +3,8 @@
  * Stores only signal fields (ids, dates, statuses, totals, client links).
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { MAX_JOB_RECORDS, WINDOW_DAYS } from "@/lib/config/limits";
 import type { JobNormalized, JobStatus } from "@/types/2ndlook";
 
@@ -49,8 +51,7 @@ function normalizeJobStatus(status?: string | null): JobStatus {
  * Enforces 90-day activity window and max 100 records.
  */
 export async function normalizeJobsAndStore(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   sourceId: string,
   rows: JobRowInput[],
 ): Promise<NormalizeJobsResult> {

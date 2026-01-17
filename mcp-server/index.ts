@@ -136,11 +136,11 @@ export function buildSafeBucketResponse({
   sourceStatus: SourceStatus;
   sourceId: string;
   estimateCount: number;
-  invoiceBucket?: any;
+  invoiceBucket?: unknown;
   invoiceCount?: number;
 }) {
   const typedBucket = bucket as EstimateBucket;
-  const result: any = {
+  const result: Record<string, unknown> = {
     source_id: sourceId,
     estimate_count: estimateCount || 0,
     status: sourceStatus,
@@ -172,7 +172,7 @@ export function buildSafeBucketResponse({
   }
 
   if (invoiceBucket && invoiceCount && invoiceCount > 0) {
-    const typedInvoiceBucket = invoiceBucket as any;
+    const typedInvoiceBucket = invoiceBucket as Record<string, unknown>;
     result.invoiceSignals = {
       invoice_count: invoiceCount,
       price_distribution: [
@@ -325,7 +325,7 @@ async function handleListSnapshots(args: { installation_id: string; limit?: numb
 
   return {
     installation_id: args.installation_id,
-    snapshots: (snapshots || []).map((s: any) => ({
+    snapshots: (snapshots || []).map((s: Record<string, unknown>) => ({
       snapshot_id: s.id,
       source_id: s.source_id,
       estimate_count: s.estimate_count,
@@ -353,7 +353,7 @@ async function handleListSources(args: { installation_id: string; limit?: number
 
   return {
     installation_id: args.installation_id,
-    sources: (sources || []).map((s: any) => ({
+    sources: (sources || []).map((s: Record<string, unknown>) => ({
       source_id: s.id,
       source_type: s.source_type,
       source_name: s.source_name,

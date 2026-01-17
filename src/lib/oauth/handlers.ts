@@ -83,7 +83,7 @@ export async function handleOAuthCallback(request: NextRequest, provider: OAuthP
     return NextResponse.redirect(redirectBase.toString());
   }
 
-  let verified;
+  let verified: ReturnType<typeof verifyOAuthState>;
   try {
     verified = verifyOAuthState(state);
   } catch {

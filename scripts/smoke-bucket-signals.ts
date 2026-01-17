@@ -73,7 +73,7 @@ async function main() {
     },
   };
 
-  const { kept, meaningful } = await normalizeAndStore(supabaseMock as any, "source-test", csvRows);
+  const { kept, meaningful } = await normalizeAndStore(supabaseMock as unknown, "source-test", csvRows);
 
   if (kept !== csvRows.length) {
     throw new Error(`Expected ${csvRows.length} kept rows, got ${kept}`);
@@ -117,7 +117,7 @@ async function main() {
       id: "bucket-1",
       source_id: "source-test",
       created_at: now.toISOString(),
-    } as any,
+    } as Record<string, unknown>,
     sourceStatus: "bucketed" as SourceStatus,
     sourceId: "source-test",
     estimateCount: meaningful,
@@ -129,7 +129,7 @@ async function main() {
     throw new Error("Safe payload contains unexpected raw keys");
   }
 
-  if (!safePayload.geo_postal_prefix_distribution?.every((p: any) => p.prefix.length === 3)) {
+  if (!safePayload.geo_postal_prefix_distribution?.every((p: { prefix: string }) => p.prefix.length === 3)) {
     throw new Error("Postal prefixes not constrained to 3 characters");
   }
 

@@ -58,10 +58,10 @@ export function buildDeterministicSnapshot(
 
   const demandTrend = recentAvg > priorAvg * 1.15 ? "up" : recentAvg < priorAvg * 0.85 ? "down" : "flat";
 
-  const priceMix = aggregates.price_distribution.reduce(
-    (acc, band) => ({ ...acc, [band.band]: band.count }),
-    {} as Record<string, number>,
-  );
+  const priceMix: Record<string, number> = {};
+  for (const band of aggregates.price_distribution) {
+    priceMix[band.band] = band.count;
+  }
   const highValueShare = (priceMix["1500-5000"] ?? 0) + (priceMix["5000+"] ?? 0);
   const repeatClientRatio =
     typeof aggregates.repeat_client_ratio === "number" && Number.isFinite(aggregates.repeat_client_ratio)
@@ -214,23 +214,26 @@ export function validateBucketedAggregates(aggregates: unknown): asserts aggrega
     throw new Error("Invalid aggregates: weekly_volume too large");
   }
 
-  for (const item of agg.price_distribution as any[]) {
+  const priceDistribution = agg.price_distribution as Array<{ count?: unknown }>;
+  for (const item of priceDistribution) {
     if (typeof item?.count !== "number") {
       throw new Error("Invalid aggregates: price_distribution counts must be numbers");
     }
   }
 
-  for (const item of agg.latency_distribution as any[]) {
+  const latencyDistribution = agg.latency_distribution as Array<{ count?: unknown }>;
+  for (const item of latencyDistribution) {
     if (typeof item?.count !== "number") {
       throw new Error("Invalid aggregates: latency_distribution counts must be numbers");
     }
   }
 
   if (agg.job_type_distribution) {
-    if ((agg.job_type_distribution as any[]).length > 100) {
+    const jobTypeDistribution = agg.job_type_distribution as Array<{ count?: unknown }>;
+    if (jobTypeDistribution.length > 100) {
       throw new Error("Invalid aggregates: job_type_distribution too large");
     }
-    for (const item of agg.job_type_distribution as any[]) {
+    for (const item of jobTypeDistribution) {
       if (typeof item?.count !== "number") {
         throw new Error("Invalid aggregates: job_type_distribution counts must be numbers");
       }
@@ -256,10 +259,11 @@ export function validateBucketedAggregates(aggregates: unknown): asserts aggrega
     if (!Array.isArray(agg.geo_city_distribution)) {
       throw new Error("Invalid aggregates: geo_city_distribution must be array if provided");
     }
-    if ((agg.geo_city_distribution as any[]).length > 50) {
+    const geoCityDistribution = agg.geo_city_distribution as Array<{ count?: unknown; city?: unknown }>;
+    if (geoCityDistribution.length > 50) {
       throw new Error("Invalid aggregates: geo_city_distribution too large");
     }
-    for (const item of agg.geo_city_distribution as any[]) {
+    for (const item of geoCityDistribution) {
       if (typeof item?.count !== "number" || typeof item?.city !== "string") {
         throw new Error("Invalid aggregates: geo_city_distribution items must have city and count");
       }
@@ -270,10 +274,11 @@ export function validateBucketedAggregates(aggregates: unknown): asserts aggrega
     if (!Array.isArray(agg.geo_postal_prefix_distribution)) {
       throw new Error("Invalid aggregates: geo_postal_prefix_distribution must be array if provided");
     }
-    if ((agg.geo_postal_prefix_distribution as any[]).length > 50) {
+    const geoPostalDistribution = agg.geo_postal_prefix_distribution as Array<{ count?: unknown; prefix?: unknown }>;
+    if (geoPostalDistribution.length > 50) {
       throw new Error("Invalid aggregates: geo_postal_prefix_distribution too large");
     }
-    for (const item of agg.geo_postal_prefix_distribution as any[]) {
+    for (const item of geoPostalDistribution) {
       if (typeof item?.count !== "number" || typeof item?.prefix !== "string") {
         throw new Error("Invalid aggregates: geo_postal_prefix_distribution items must have prefix and count");
       }

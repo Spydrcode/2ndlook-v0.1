@@ -91,7 +91,7 @@ async function refreshWithOptimisticLock(params: {
   let json: { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string } | null = null;
   try {
     json = JSON.parse(responseText);
-  } catch (error) {
+  } catch (_error) {
     console.error("[JOBBER TOKEN] Refresh response not JSON", {
       installation_id: installationId,
     });

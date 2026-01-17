@@ -426,7 +426,7 @@ export async function fetchJobsPaged(args: PageArgs): Promise<{ rows: JobRowInpu
       }
     }
 
-    const jobResult = await jobberGraphQL<{
+    const { data, cost } = (await jobberGraphQL<{
       jobs: {
         pageInfo: { hasNextPage: boolean; endCursor: string | null };
         nodes: Array<{
@@ -441,12 +441,7 @@ export async function fetchJobsPaged(args: PageArgs): Promise<{ rows: JobRowInpu
       };
     }>(query, { after, first: pageSize }, accessToken, {
       targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
-    });
-
-    const {
-      data,
-      cost,
-    }: {
+    })) as {
       data: {
         jobs: {
           pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -462,7 +457,7 @@ export async function fetchJobsPaged(args: PageArgs): Promise<{ rows: JobRowInpu
         };
       };
       cost?: { requested: number; max: number; available?: number };
-    } = jobResult;
+    };
 
     if (cost) {
       totalCost += cost.requested ?? 0;
@@ -534,7 +529,7 @@ export async function fetchClientsPaged(args: PageArgs): Promise<{ rows: ClientR
             createdAt
             updatedAt
             isLead
-            addresses {
+            billingAddress {
               city
               postalCode
             }
@@ -573,7 +568,7 @@ export async function fetchClientsPaged(args: PageArgs): Promise<{ rows: ClientR
             createdAt: string;
             updatedAt?: string | null;
             isLead?: boolean | null;
-            addresses?: Array<{ city?: string | null; postalCode?: string | null }> | null;
+            billingAddress?: { city?: string | null; postalCode?: string | null } | null;
           }>;
         };
       };
@@ -597,8 +592,11 @@ export async function fetchClientsPaged(args: PageArgs): Promise<{ rows: ClientR
       });
     } catch (err) {
       // If scopes are too narrow for addresses, retry without address fields.
-      if (err instanceof JobberMissingScopesError) {
-        console.warn("[JOBBER] Missing address scopes; retrying clients without address fields.");
+      if (
+        err instanceof JobberMissingScopesError ||
+        (err instanceof JobberAPIError && err.message.toLowerCase().includes("billingaddress"))
+      ) {
+        console.warn("[JOBBER] Address fields unavailable; retrying clients without address fields.");
         clientResult = await jobberGraphQL<{
           clients: {
             pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -630,7 +628,7 @@ export async function fetchClientsPaged(args: PageArgs): Promise<{ rows: ClientR
             createdAt: string;
             updatedAt?: string | null;
             isLead?: boolean | null;
-            addresses?: Array<{ city?: string | null; postalCode?: string | null }> | null;
+            billingAddress?: { city?: string | null; postalCode?: string | null } | null;
           }>;
         };
       };
@@ -649,10 +647,10 @@ export async function fetchClientsPaged(args: PageArgs): Promise<{ rows: ClientR
         createdAt: string;
         updatedAt?: string | null;
         isLead?: boolean | null;
-        addresses?: Array<{ city?: string | null; postalCode?: string | null }> | null;
+        billingAddress?: { city?: string | null; postalCode?: string | null } | null;
       }) => {
-        const city = client.addresses?.[0]?.city ? sanitizeCity(client.addresses[0].city) : null;
-        const postal = client.addresses?.[0]?.postalCode ? sanitizePostal(client.addresses[0].postalCode) : null;
+        const city = client.billingAddress?.city ? sanitizeCity(client.billingAddress.city) : null;
+        const postal = client.billingAddress?.postalCode ? sanitizePostal(client.billingAddress.postalCode) : null;
         return {
           client_id: client.id,
           created_at: client.createdAt,

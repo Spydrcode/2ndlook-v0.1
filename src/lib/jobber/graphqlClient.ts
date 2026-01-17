@@ -157,10 +157,11 @@ export async function jobberGraphQL<T>(
 
       const primaryError = getPrimaryErrorMessage(json.errors);
       if (primaryError) {
+        const actionHint = getActionHint(primaryError) ?? undefined;
         throw new JobberAPIError(primaryError, {
           responseText: text.slice(0, 2000),
           graphqlErrors: json.errors,
-          action_hint: getActionHint(primaryError),
+          action_hint: actionHint,
         });
       }
 

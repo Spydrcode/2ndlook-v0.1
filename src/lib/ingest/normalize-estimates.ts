@@ -3,6 +3,8 @@
  * Used by both CSV upload and OAuth connectors (Jobber, etc.)
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { MAX_ESTIMATE_RECORDS, WINDOW_DAYS } from "@/lib/config/limits";
 import { MEANINGFUL_ESTIMATE_STATUSES, normalizeEstimateStatus } from "@/lib/ingest/statuses";
 import type { CSVEstimateRow, EstimateNormalized } from "@/types/2ndlook";
@@ -19,8 +21,7 @@ export interface NormalizeResult {
  * Does NOT enforce minimum - caller should check kept >= getMinMeaningfulEstimates().
  */
 export async function normalizeAndStore(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   sourceId: string,
   rows: CSVEstimateRow[],
 ): Promise<NormalizeResult> {

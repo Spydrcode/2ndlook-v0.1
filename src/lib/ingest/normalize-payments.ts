@@ -3,6 +3,8 @@
  * Applies 90 day window, 100 record cap.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { MAX_PAYMENT_RECORDS, WINDOW_DAYS } from "@/lib/config/limits";
 import type { PaymentNormalized } from "@/types/2ndlook";
 
@@ -25,8 +27,7 @@ export interface NormalizePaymentsResult {
  * Enforces: 90 day window (by payment_date) and max 100 records.
  */
 export async function normalizePaymentsAndStore(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   sourceId: string,
   rows: PaymentRowInput[],
 ): Promise<NormalizePaymentsResult> {

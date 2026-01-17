@@ -14,7 +14,7 @@ export async function persistPreference(key: PreferenceKey, value: string) {
       return;
 
     case "client-cookie":
-      setClientCookie(key, value);
+      await setClientCookie(key, value);
       return;
 
     case "server-cookie":

@@ -2,18 +2,19 @@
 // These functions manage cookies in the browser only.
 // Server actions handle cookie updates on the server side.
 
-export function setClientCookie(key: string, value: string, days = 7) {
-  const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  document.cookie = `${key}=${value}; expires=${expires}; path=/`;
+export async function setClientCookie(key: string, value: string, days = 7): Promise<void> {
+  if (typeof window === "undefined" || !("cookieStore" in window)) return;
+  const expires = new Date(Date.now() + days * 864e5);
+  await window.cookieStore.set({ name: key, value, expires, path: "/" });
 }
 
-export function getClientCookie(key: string) {
-  return document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(`${key}=`))
-    ?.split("=")[1];
+export async function getClientCookie(key: string): Promise<string | undefined> {
+  if (typeof window === "undefined" || !("cookieStore" in window)) return undefined;
+  const cookie = await window.cookieStore.get({ name: key });
+  return cookie?.value;
 }
 
-export function deleteClientCookie(key: string) {
-  document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
+export async function deleteClientCookie(key: string): Promise<void> {
+  if (typeof window === "undefined" || !("cookieStore" in window)) return;
+  await window.cookieStore.delete({ name: key, path: "/" });
 }

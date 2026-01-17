@@ -3,6 +3,8 @@
  * Stores minimal identifiers only (no PII like names or emails).
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { MAX_CLIENT_RECORDS, WINDOW_DAYS } from "@/lib/config/limits";
 import type { ClientNormalized } from "@/types/2ndlook";
 
@@ -23,8 +25,7 @@ export interface NormalizeClientsResult {
  * Enforces 90-day window (by created_at) and 100 record cap.
  */
 export async function normalizeClientsAndStore(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   sourceId: string,
   rows: ClientRowInput[],
 ): Promise<NormalizeClientsResult> {

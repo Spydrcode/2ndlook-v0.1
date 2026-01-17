@@ -30,10 +30,17 @@ export class JobberAPIError extends Error {
   event_id?: string;
   responseText?: string;
   graphqlErrors?: unknown[];
+  action_hint?: string;
 
   constructor(
     message: string,
-    options?: { code?: string; event_id?: string; responseText?: string; graphqlErrors?: unknown[] },
+    options?: {
+      code?: string;
+      event_id?: string;
+      responseText?: string;
+      graphqlErrors?: unknown[];
+      action_hint?: string;
+    },
   ) {
     super(message);
     this.name = "JobberAPIError";
@@ -41,5 +48,6 @@ export class JobberAPIError extends Error {
     this.event_id = options?.event_id;
     this.responseText = options?.responseText;
     this.graphqlErrors = options?.graphqlErrors;
+    this.action_hint = options?.action_hint;
   }
 }

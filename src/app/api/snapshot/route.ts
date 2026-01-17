@@ -2,7 +2,6 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
-import { runSnapshotOrchestrator } from "@/lib/orchestrator/runSnapshot";
 import { runDeterministicSnapshot } from "@/lib/snapshot/deterministic";
 import { resolveSnapshotMode } from "@/lib/snapshot/modeSelection";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -37,7 +36,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve snapshot mode (supports auto mode)
-    const mode = resolveSnapshotMode();
+    let mode = resolveSnapshotMode();
+    if (mode === "orchestrated" && !process.env.OPENAI_API_KEY) {
+      console.warn("[Snapshot API] Missing OPENAI_API_KEY; falling back to deterministic mode.");
+      mode = "deterministic";
+    }
     const startTime = Date.now();
     let snapshot_id: string;
     let fallbackUsed = false;
@@ -51,6 +54,7 @@ export async function POST(request: NextRequest) {
           mode: "orchestrated",
         });
 
+        const { runSnapshotOrchestrator } = await import("@/lib/orchestrator/runSnapshot");
         const result = await runSnapshotOrchestrator({
           source_id,
           installation_id: installationId,
