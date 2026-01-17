@@ -67,7 +67,21 @@ export default async function PrintPage({ params }: PrintPageProps) {
     .eq("id", snapshot.source_id)
     .single();
 
-  if (sourceError || !source || source.installation_id !== installationId) {
+  if (sourceError || !source) {
+    return (
+      <div className="print-body">
+        <div className="no-print mb-4">
+          <Link href="/dashboard/connect" className="text-blue-600 text-sm">
+            <ArrowLeft className="mr-2 inline h-4 w-4" />
+            Back
+          </Link>
+        </div>
+        <h1>Snapshot not found</h1>
+      </div>
+    );
+  }
+
+  if (installationId && source.installation_id !== installationId) {
     return (
       <div className="print-body">
         <div className="no-print mb-4">

@@ -75,7 +75,24 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
     .eq("id", snapshot.source_id)
     .single();
 
-  if (sourceError || !source || source.installation_id !== installationId) {
+  if (sourceError || !source) {
+    return (
+      <div className="flex flex-1 flex-col gap-6 p-6">
+        <div className="space-y-1">
+          <h1 className="font-semibold text-2xl tracking-tight">Not authorized</h1>
+          <p className="text-muted-foreground">You don’t have access to this snapshot.</p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/dashboard/connect">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Connect
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (installationId && source.installation_id !== installationId) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-6">
         <div className="space-y-1">
