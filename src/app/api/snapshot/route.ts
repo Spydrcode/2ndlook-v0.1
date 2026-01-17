@@ -158,23 +158,24 @@ export async function POST(request: NextRequest) {
 
     await supabase.from("snapshots").update({ status: "queued" }).eq("id", snapshot_id);
 
-    void import("@/lib/snapshot/runSnapshotJob")
-      .then(({ runSnapshotJob }) => runSnapshotJob(snapshot_id))
-      .catch(async (jobError) => {
-        console.error("[Snapshot API] Failed to trigger snapshot job:", {
-          snapshot_id,
-          error: jobError instanceof Error ? jobError.message : "unknown",
-        });
-
-        await supabase
-          .from("snapshots")
-          .update({
-            status: "failed",
-            error: { message: jobError instanceof Error ? jobError.message : "snapshot_job_failed" },
-            completed_at: new Date().toISOString(),
-          })
-          .eq("id", snapshot_id);
+    try {
+      const { runSnapshotJob } = await import("@/lib/snapshot/runSnapshotJob");
+      await runSnapshotJob(snapshot_id);
+    } catch (jobError) {
+      console.error("[Snapshot API] Failed to run snapshot job:", {
+        snapshot_id,
+        error: jobError instanceof Error ? jobError.message : "unknown",
       });
+
+      await supabase
+        .from("snapshots")
+        .update({
+          status: "failed",
+          error: { message: jobError instanceof Error ? jobError.message : "snapshot_job_failed" },
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", snapshot_id);
+    }
 
     const response: SnapshotResponse = {
       snapshot_id,
