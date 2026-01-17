@@ -10,7 +10,9 @@ export type JobberConnectionPhase =
   | "token_exchange"
   | "ingest_start"
   | "ingest_error"
-  | "ingest_success";
+  | "ingest_success"
+  | "disconnect"
+  | "webhook_disconnect";
 
 export async function logJobberConnectionEvent(params: {
   installationId: string;

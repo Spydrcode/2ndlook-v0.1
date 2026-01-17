@@ -4,8 +4,10 @@ import { NextResponse } from "next/server";
 
 import { allowSmallDatasets, MIN_MEANINGFUL_ESTIMATES_PROD } from "@/lib/config/limits";
 import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
+import { jobberGraphQL } from "@/lib/jobber/graphqlClient";
 import { ingestJobberEstimates } from "@/lib/jobber/ingest";
-import { upsertConnection } from "@/lib/oauth/connections";
+import { getRequiredJobberScopes, parseScopes } from "@/lib/jobber/scopes";
+import { disconnectConnection, upsertConnection } from "@/lib/oauth/connections";
 
 import { randomUUID } from "node:crypto";
 export const runtime = "nodejs";
@@ -176,9 +178,42 @@ export async function GET(request: NextRequest) {
       granted_scopes: grantedScopes,
     });
 
+    const missingRequiredScopes = getRequiredJobberScopes().filter(
+      (scope) => !parseScopes(grantedScopes ?? process.env.JOBBER_SCOPES ?? null).has(scope),
+    );
+    if (missingRequiredScopes.length > 0) {
+      try {
+        await disconnectConnection(installationId, "jobber");
+      } catch (disconnectError) {
+        console.error("Failed to clear Jobber tokens after scope mismatch:", disconnectError);
+      }
+      await logEvent("token_exchange", {
+        ok: false,
+        error: "missing_required_scopes",
+        missing_scopes: missingRequiredScopes,
+      });
+      return errorResponse("jobber_missing_scopes");
+    }
+
     // Calculate token expiration (default to 1 hour if expires_in not provided)
     const expiresInSeconds = typeof expires_in === "number" ? expires_in : 3600;
     const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+
+    let externalAccountId: string | null = null;
+    try {
+      const accountResult = await jobberGraphQL<{ account: { id: string } }>(
+        `
+        query AccountId {
+          account { id }
+        }
+        `,
+        {},
+        access_token,
+      );
+      externalAccountId = accountResult.data.account.id;
+    } catch (accountError) {
+      console.warn("Failed to fetch Jobber account id:", accountError);
+    }
 
     // Store tokens in database
     try {
@@ -189,7 +224,13 @@ export async function GET(request: NextRequest) {
         refreshToken: refresh_token,
         tokenExpiresAt: expiresAt,
         scopes: (grantedScopes ?? process.env.JOBBER_SCOPES) || null,
-        metadata: { granted_at: new Date().toISOString() },
+        externalAccountId,
+        tokenVersion: 0,
+        metadata: {
+          granted_at: new Date().toISOString(),
+          needs_reauth: false,
+          disconnected_reason: null,
+        },
       });
     } catch (dbError) {
       console.error("Failed to store OAuth tokens:", dbError);
@@ -198,6 +239,34 @@ export async function GET(request: NextRequest) {
         error: "db_error",
       });
       return errorResponse("jobber_db_error");
+    }
+
+    const webhookUrl = process.env.JOBBER_WEBHOOK_URL || `${appUrl}/api/webhooks/jobber`;
+    try {
+      const webhookResult = await jobberGraphQL<{
+        webhookSubscriptionCreate: {
+          userErrors: Array<{ message?: string | null }>;
+          webhookSubscription?: { id?: string | null };
+        };
+      }>(
+        `
+        mutation CreateWebhookSubscription($input: WebhookSubscriptionCreateInput!) {
+          webhookSubscriptionCreate(input: $input) {
+            webhookSubscription { id }
+            userErrors { message }
+          }
+        }
+        `,
+        { input: { topic: "APP_DISCONNECT", url: webhookUrl } },
+        access_token,
+      );
+
+      const userErrors = webhookResult.data.webhookSubscriptionCreate.userErrors ?? [];
+      if (userErrors.length > 0) {
+        console.warn("Jobber webhook subscription userErrors:", userErrors);
+      }
+    } catch (webhookError) {
+      console.warn("Failed to create Jobber webhook subscription:", webhookError);
     }
 
     // Trigger ingestion

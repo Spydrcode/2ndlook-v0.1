@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
 import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
-import { getConnection } from "@/lib/oauth/connections";
+import { getRequestedJobberScopes } from "@/lib/jobber/scopes";
+import { disconnectConnection, getConnection } from "@/lib/oauth/connections";
 
 import { randomBytes, randomUUID } from "node:crypto";
 export const runtime = "nodejs";
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
     // Validate required environment variables
     const clientId = process.env.JOBBER_CLIENT_ID;
     const redirectUri = process.env.JOBBER_REDIRECT_URI;
-    const scopes = process.env.JOBBER_SCOPES || "quotes:read invoices:read jobs:read clients:read payments:read";
+    const scopes = getRequestedJobberScopes();
 
     if (!clientId || !redirectUri) {
       console.error("Missing Jobber OAuth configuration");
@@ -35,11 +36,12 @@ export async function GET(request: NextRequest) {
     if (!force) {
       try {
         const connection = await getConnection(installationId, "jobber");
+        const needsReauth = connection?.metadata?.needs_reauth === true;
         const expiresAt = connection?.token_expires_at ? new Date(connection.token_expires_at) : null;
         const isExpired = expiresAt ? expiresAt.getTime() <= Date.now() : false;
         const isConnected = !!connection?.access_token && !isExpired;
 
-        if (isConnected) {
+        if (isConnected && !needsReauth) {
           const manageUrl = process.env.JOBBER_MANAGE_APP_URL;
           const redirectTo = manageUrl
             ? new URL(manageUrl, appUrl).toString()
@@ -63,8 +65,23 @@ export async function GET(request: NextRequest) {
 
           return NextResponse.redirect(redirectTo);
         }
+        if (needsReauth) {
+          try {
+            await disconnectConnection(installationId, "jobber");
+          } catch (disconnectError) {
+            console.error("Failed to clear Jobber tokens before reauth:", disconnectError);
+          }
+        }
       } catch (error) {
         console.error("Failed to validate Jobber connection:", error);
+      }
+    }
+
+    if (force) {
+      try {
+        await disconnectConnection(installationId, "jobber");
+      } catch (disconnectError) {
+        console.error("Failed to clear Jobber tokens before forced reauth:", disconnectError);
       }
     }
 
@@ -78,6 +95,7 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("scope", scopes);
     authUrl.searchParams.set("state", state);
+    authUrl.searchParams.set("prompt", force ? "login" : "consent");
 
     try {
       await logJobberConnectionEvent({

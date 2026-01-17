@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { getInstallationId } from "@/lib/installations/cookie";
-import { getConnection } from "@/lib/oauth/connections";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -18,10 +18,33 @@ export async function GET(_request: NextRequest) {
       return NextResponse.json({ connected: false, status: "no_installation" });
     }
 
-    const connection = await getConnection(installationId, "jobber");
+    const supabase = createAdminClient();
+    const { data: connection, error } = await supabase
+      .from("oauth_connections")
+      .select("access_token_enc, token_expires_at, external_account_id, metadata")
+      .eq("installation_id", installationId)
+      .eq("provider", "jobber")
+      .single();
 
-    if (!connection) {
+    if (error || !connection) {
       return NextResponse.json({ connected: false, status: "not_connected" });
+    }
+
+    const metadata = (connection.metadata as Record<string, unknown> | null) ?? null;
+    if (metadata?.needs_reauth === true) {
+      return NextResponse.json({
+        connected: false,
+        status: "needs_reauth",
+        disconnected_reason: metadata?.needs_reauth_reason ?? null,
+      });
+    }
+
+    if (!connection.access_token_enc) {
+      return NextResponse.json({
+        connected: false,
+        status: "disconnected",
+        disconnected_reason: metadata?.disconnected_reason ?? null,
+      });
     }
 
     // Check if token is expired
@@ -32,15 +55,17 @@ export async function GET(_request: NextRequest) {
       return NextResponse.json({
         connected: false,
         status: "token_expired",
-        expires_at: connection.token_expires_at,
+        expires_at: connection.token_expires_at ?? null,
+        disconnected_reason: metadata?.disconnected_reason ?? null,
       });
     }
 
     return NextResponse.json({
       connected: true,
       status: "connected",
-      expires_at: connection.token_expires_at,
-      external_account_id: connection.external_account_id,
+      expires_at: connection.token_expires_at ?? null,
+      external_account_id: connection.external_account_id ?? null,
+      disconnected_reason: metadata?.disconnected_reason ?? null,
     });
   } catch (error) {
     console.error("Status check error:", error);

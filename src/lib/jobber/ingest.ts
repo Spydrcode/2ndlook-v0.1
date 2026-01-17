@@ -8,7 +8,8 @@ import { getAdapter } from "@/lib/connectors/registry";
 import { runIngestFromPayload } from "@/lib/ingest/runIngest";
 import { logJobberConnectionEvent } from "@/lib/jobber/connection-events";
 import { JobberMissingScopesError, JobberRateLimitedError } from "@/lib/jobber/errors";
-import { getConnection } from "@/lib/oauth/connections";
+import { getRequiredJobberScopes, parseScopes } from "@/lib/jobber/scopes";
+import { getConnection, markConnectionNeedsReauth } from "@/lib/oauth/connections";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface IngestJobberResult {
@@ -44,15 +45,16 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
     const adapter = getAdapter("jobber");
     const connection = await getConnection(installationId, "jobber");
     const scopesRaw = connection?.scopes ?? "";
-    const scopes = new Set(scopesRaw.split(/\s+/).filter(Boolean));
-    const requiredScopes = ["quotes:read"];
+    const scopes = parseScopes(scopesRaw);
+    const requiredScopes = getRequiredJobberScopes();
     const missingScopes = requiredScopes.filter((scope) => !scopes.has(scope));
     if (missingScopes.length > 0) {
       throw new JobberMissingScopesError(
-        "Jobber permissions are incomplete; please reconnect to approve quotes.",
+        "Jobber permissions are incomplete; please reconnect to approve required scopes.",
         missingScopes,
       );
     }
+    const hasPaymentsScope = scopes.has("payments:read");
 
     try {
       console.log("[JOBBER INGEST] Fetching canonical payload from adapter...");
@@ -64,7 +66,7 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
           max_invoices: 100,
           max_clients: 100,
           max_jobs: 100,
-          max_payments: 100,
+          max_payments: hasPaymentsScope ? 100 : 0,
         },
       });
 
@@ -130,14 +132,23 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
           : fetchError instanceof JobberMissingScopesError
             ? "jobber_missing_scopes"
             : "jobber_ingest_failed";
+      const needsReauthReason = connection?.metadata?.needs_reauth_reason;
+      const isTokenExpired =
+        needsReauthReason === "refresh_token_invalid" ||
+        needsReauthReason === "refresh_failed" ||
+        needsReauthReason === "missing_refresh_token";
+      const resolvedErrorCode =
+        errorCode === "jobber_missing_scopes" && isTokenExpired ? "jobber_connection_expired" : errorCode;
       const friendlyError =
-        errorCode === "jobber_rate_limited"
+        resolvedErrorCode === "jobber_rate_limited"
           ? "Jobber rate-limited the sync. Please retry in about a minute."
-          : errorCode === "jobber_missing_scopes"
-            ? "Jobber permissions are incomplete; please reconnect to approve invoices/jobs/clients/payments."
-            : err?.message?.includes?.("empty data")
-              ? "Jobber returned no data. Ensure you have recent quotes and that permissions are approved, then reconnect."
-              : (err?.message ?? String(fetchError));
+          : resolvedErrorCode === "jobber_connection_expired"
+            ? "Connection expired — reconnect Jobber."
+            : resolvedErrorCode === "jobber_missing_scopes"
+              ? "Jobber permissions are incomplete; please reconnect to approve invoices/jobs/clients/payments."
+              : err?.message?.includes?.("empty data")
+                ? "Jobber returned no data. Ensure you have recent quotes and that permissions are approved, then reconnect."
+                : (err?.message ?? String(fetchError));
       const errorDetails = {
         ok: false,
         error: friendlyError,
@@ -166,10 +177,23 @@ export async function ingestJobberEstimates(installationId: string, eventId?: st
         }
       }
 
+      if (fetchError instanceof JobberMissingScopesError) {
+        try {
+          await markConnectionNeedsReauth({
+            installationId,
+            provider: "jobber",
+            reason: "missing_required_scopes",
+            details: { missing_scopes: fetchError.missing },
+          });
+        } catch (markError) {
+          console.error("Failed to mark Jobber connection needs reauth:", markError);
+        }
+      }
+
       return {
         success: false,
         error: errorDetails.error,
-        error_code: errorCode,
+        error_code: resolvedErrorCode,
       };
     }
   } catch (err) {

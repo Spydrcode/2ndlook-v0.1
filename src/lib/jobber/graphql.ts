@@ -829,3 +829,22 @@ export async function fetchPaymentsPaged(args: PageArgs): Promise<{ rows: Paymen
 
   return { rows: rows.slice(0, maxRecords), totalCost };
 }
+
+export async function appDisconnectJobber(accessToken: string): Promise<{
+  userErrors: Array<{ message?: string | null }> | null;
+}> {
+  const mutation = `
+    mutation DisconnectApp {
+      appDisconnect {
+        app { name author }
+        userErrors { message }
+      }
+    }
+  `;
+
+  const result = await jobberGraphQL<{
+    appDisconnect: { userErrors: Array<{ message?: string | null }> };
+  }>(mutation, {}, accessToken);
+
+  return { userErrors: result.data.appDisconnect.userErrors ?? null };
+}

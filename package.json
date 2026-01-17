@@ -20,7 +20,8 @@
     "mcp:test": "npx tsx mcp-server/test-client.ts",
     "smoke:snapshot": "npx tsx scripts/smoke-run-snapshot.ts",
     "smoke:buckets": "npx tsx scripts/smoke-bucket-signals.ts",
-    "smoke:connector": "npx tsx scripts/smoke-connector-payload.ts"
+    "smoke:connector": "npx tsx scripts/smoke-connector-payload.ts",
+    "jobber:refresh-sim": "npx ts-node scripts/jobber-refresh-sim.ts"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx}": ["biome check --write --no-errors-on-unmatched"]

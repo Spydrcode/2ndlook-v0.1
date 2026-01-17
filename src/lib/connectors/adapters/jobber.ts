@@ -48,8 +48,6 @@ export const jobberAdapter: ConnectorAdapter = {
     let jobsResult: { rows: JobRowInput[]; totalCost?: number } = { rows: [], totalCost: 0 };
     let clientsResult: { rows: ClientRowInput[]; totalCost?: number } = { rows: [], totalCost: 0 };
     let paymentsResult: { rows: PaymentRowInput[]; totalCost?: number } = { rows: [], totalCost: 0 };
-    let missingScopes: string[] = [];
-
     try {
       invoicesResult = await fetchInvoicesPaged({
         installationId: args.oauth_connection_id,
@@ -59,12 +57,9 @@ export const jobberAdapter: ConnectorAdapter = {
       });
     } catch (err) {
       if (err instanceof JobberMissingScopesError) {
-        missingScopes = [...missingScopes, ...err.missing];
-        console.warn("[JOBBER] Missing scopes for invoices; continuing without invoices:", err);
-        invoicesResult = { rows: [], totalCost: 0 };
-      } else {
-        throw err;
+        console.warn("[JOBBER] Missing scopes for invoices; reauth required:", err);
       }
+      throw err;
     }
 
     try {
@@ -76,12 +71,9 @@ export const jobberAdapter: ConnectorAdapter = {
       });
     } catch (err) {
       if (err instanceof JobberMissingScopesError) {
-        missingScopes = [...missingScopes, ...err.missing];
-        console.warn("[JOBBER] Missing scopes for jobs; continuing without jobs:", err);
-        jobsResult = { rows: [], totalCost: 0 };
-      } else {
-        throw err;
+        console.warn("[JOBBER] Missing scopes for jobs; reauth required:", err);
       }
+      throw err;
     }
 
     try {
@@ -93,28 +85,26 @@ export const jobberAdapter: ConnectorAdapter = {
       });
     } catch (err) {
       if (err instanceof JobberMissingScopesError) {
-        missingScopes = [...missingScopes, ...err.missing];
-        console.warn("[JOBBER] Missing scopes for clients; continuing without clients:", err);
-        clientsResult = { rows: [], totalCost: 0 };
-      } else {
-        throw err;
+        console.warn("[JOBBER] Missing scopes for clients; reauth required:", err);
       }
+      throw err;
     }
 
-    try {
-      paymentsResult = await fetchPaymentsPaged({
-        installationId: args.oauth_connection_id,
-        sinceISO,
-        limit: args.limits.max_payments ?? 25,
-        targetMaxCost: 6000,
-      });
-    } catch (err) {
-      if (err instanceof JobberMissingScopesError) {
-        missingScopes = [...missingScopes, ...err.missing];
-        console.warn("[JOBBER] Missing scopes for payments; continuing without payments:", err);
-        paymentsResult = { rows: [], totalCost: 0 };
-      } else {
-        throw err;
+    if ((args.limits.max_payments ?? 0) > 0) {
+      try {
+        paymentsResult = await fetchPaymentsPaged({
+          installationId: args.oauth_connection_id,
+          sinceISO,
+          limit: args.limits.max_payments ?? 25,
+          targetMaxCost: 6000,
+        });
+      } catch (err) {
+        if (err instanceof JobberMissingScopesError) {
+          console.warn("[JOBBER] Missing scopes for payments; continuing without payments:", err);
+          paymentsResult = { rows: [], totalCost: 0 };
+        } else {
+          throw err;
+        }
       }
     }
 

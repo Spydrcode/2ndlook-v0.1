@@ -61,10 +61,13 @@ export default function ConnectPage() {
   // Handle cleanup when leaving page or refreshing (for incomplete OAuth flows)
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // Only disconnect if we were in the middle of connecting
-      // and the connection wasn't completed (no success redirect)
-      if (isConnecting && !searchParams.get("success")) {
-        // Use sendBeacon for reliable cleanup during page unload
+      // Session disconnect only: do not revoke OAuth on unload unless feature-flagged.
+      if (
+        isConnecting &&
+        !searchParams.get("success") &&
+        process.env.NEXT_PUBLIC_JOBBER_HARD_DISCONNECT_ON_CLOSE === "true"
+      ) {
+        // Hard disconnect is discouraged; see env flag docs.
         const blob = new Blob([JSON.stringify({})], { type: "application/json" });
         navigator.sendBeacon("/api/oauth/jobber/disconnect", blob);
       }
@@ -145,8 +148,14 @@ export default function ConnectPage() {
         if (data.connected) {
           setConnectionStates((prev) => ({ ...prev, jobber: "connected" }));
           setIsConnecting(false);
-        } else if (data.status === "token_expired") {
+        } else if (data.status === "token_expired" || data.status === "needs_reauth") {
           setConnectionStates((prev) => ({ ...prev, jobber: "reconnect_required" }));
+        } else if (data.status === "disconnected" || data.status === "not_connected") {
+          setConnectionStates((prev) => {
+            const next = { ...prev };
+            delete next.jobber;
+            return next;
+          });
         }
       } catch {
         // Silent failure
@@ -213,6 +222,7 @@ export default function ConnectPage() {
       jobber_rate_limited: "Jobber rate-limited the sync. Please try again in ~60 seconds.",
       jobber_missing_scopes:
         "Reconnect Jobber to approve the required permissions. If it persists, confirm the Jobber app scopes include quotes, invoices, jobs, clients, and payments.",
+      jobber_connection_expired: "Connection expired — reconnect Jobber.",
       jobber_min_estimates: `Minimum 25 meaningful estimates required. Jobber returned fewer than 25 sent/accepted/converted estimates from the last ${WINDOW_DAYS} days.`,
       jobber_insufficient_data: `Connected to Jobber, but we found only ${count || 0} meaningful estimates. 2ndlook needs at least ${required} sent/accepted/converted estimates for a full snapshot. Create/send more estimates in Jobber, then reconnect.`,
       jobber_config_error: "OAuth configuration error. Please contact support.",
