@@ -4,8 +4,8 @@
 
 export async function setClientCookie(key: string, value: string, days = 7): Promise<void> {
   if (typeof window === "undefined" || !("cookieStore" in window)) return;
-  const expires = new Date(Date.now() + days * 864e5);
-  await window.cookieStore.set({ name: key, value, expires, path: "/" });
+  const expiresAt = Date.now() + days * 864e5;
+  await window.cookieStore.set({ name: key, value, expires: expiresAt, path: "/" });
 }
 
 export async function getClientCookie(key: string): Promise<string | undefined> {
