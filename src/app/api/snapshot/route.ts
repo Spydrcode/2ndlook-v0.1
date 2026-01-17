@@ -19,11 +19,38 @@ function normalizeSnapshotError(error: unknown): { status: number; message: stri
   if (lower.includes("invalid source_id")) {
     return { status: 403, message: "Invalid source_id" };
   }
+  if (lower.includes("snapshots_estimate_count_check")) {
+    return {
+      status: 400,
+      message: "Not enough meaningful estimates to generate a snapshot. Please add more data and try again.",
+    };
+  }
+  if (
+    lower.includes('column "status"') ||
+    lower.includes('column "input_summary"') ||
+    lower.includes('column "error"') ||
+    lower.includes('null value in column "result"') ||
+    lower.includes("snapshots_status_check")
+  ) {
+    return {
+      status: 500,
+      message: "Snapshot schema is out of date. Apply the snapshot lifecycle migration.",
+    };
+  }
   if (lower.includes('null value in column "user_id"')) {
     return { status: 500, message: "Snapshot schema requires user_id. Apply no-login migration." };
   }
 
   return { status: 500, message: "Unable to generate snapshot. Please try again." };
+}
+
+function sanitizeErrorDetail(error: unknown): string | null {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+  if (lower.includes("token") || lower.includes("secret") || lower.includes("authorization")) {
+    return null;
+  }
+  return message;
 }
 
 function isSnapshotSchemaMismatch(error: unknown): boolean {
@@ -100,7 +127,10 @@ export async function POST(request: NextRequest) {
             event_id: eventId,
             error: fallbackError instanceof Error ? fallbackError.message : "unknown",
           });
-          return NextResponse.json({ error: normalized.message, event_id: eventId }, { status: normalized.status });
+          return NextResponse.json(
+            { error: normalized.message, event_id: eventId, detail: sanitizeErrorDetail(fallbackError) },
+            { status: normalized.status },
+          );
         }
       }
 
@@ -139,6 +169,9 @@ export async function POST(request: NextRequest) {
     });
 
     const normalized = normalizeSnapshotError(error);
-    return NextResponse.json({ error: normalized.message, event_id: eventId }, { status: normalized.status });
+    return NextResponse.json(
+      { error: normalized.message, event_id: eventId, detail: sanitizeErrorDetail(error) },
+      { status: normalized.status },
+    );
   }
 }

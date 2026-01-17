@@ -75,22 +75,55 @@ export async function createSnapshotRecord(params: {
     weekly_volume: bucket.weekly_volume ?? [],
   };
 
-  const { data: snapshot, error: snapshotError } = await supabase
-    .from("snapshots")
-    .insert({
-      source_id: params.sourceId,
-      estimate_count: estimateCount,
-      confidence_level: "low",
-      result: null,
-      status: "created",
-      input_summary: inputSummary,
-      generated_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
+  const generatedAt = new Date().toISOString();
+  const insertPayload = {
+    source_id: params.sourceId,
+    estimate_count: estimateCount,
+    confidence_level: "low",
+    result: null,
+    status: "created",
+    input_summary: inputSummary,
+    generated_at: generatedAt,
+  };
+
+  let snapshot: { id: string } | null = null;
+  let snapshotError: { message?: string } | null = null;
+
+  const insertResult = await supabase.from("snapshots").insert(insertPayload).select("id").single();
+  snapshot = insertResult.data ?? null;
+  snapshotError = insertResult.error ?? null;
 
   if (snapshotError || !snapshot) {
-    throw new Error(`Failed to create snapshot: ${snapshotError?.message || "unknown"}`);
+    const message = snapshotError?.message ?? "unknown";
+    const lower = message.toLowerCase();
+    const isSchemaCacheMiss =
+      lower.includes("schema cache") ||
+      lower.includes("could not find") ||
+      lower.includes('column "input_summary"') ||
+      lower.includes('column "status"') ||
+      lower.includes('column "error"');
+
+    if (isSchemaCacheMiss) {
+      const fallbackResult = await supabase
+        .from("snapshots")
+        .insert({
+          source_id: params.sourceId,
+          estimate_count: estimateCount,
+          confidence_level: "low",
+          result: {},
+          generated_at: generatedAt,
+        })
+        .select("id")
+        .single();
+
+      if (fallbackResult.error || !fallbackResult.data) {
+        throw new Error(`Failed to create snapshot: ${fallbackResult.error?.message || message}`);
+      }
+
+      return { snapshot_id: fallbackResult.data.id, source_id: params.sourceId };
+    }
+
+    throw new Error(`Failed to create snapshot: ${message}`);
   }
 
   return { snapshot_id: snapshot.id, source_id: params.sourceId };
