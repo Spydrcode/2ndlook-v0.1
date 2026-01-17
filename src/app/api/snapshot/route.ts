@@ -137,6 +137,25 @@ export async function POST(request: NextRequest) {
       throw createError;
     }
 
+    const { data: snapshotCheck, error: snapshotCheckError } = await supabase
+      .from("snapshots")
+      .select("id, source_id")
+      .eq("id", snapshot_id)
+      .single();
+
+    if (snapshotCheckError || !snapshotCheck) {
+      console.error("[Snapshot API] Snapshot read-after-write failed:", {
+        snapshot_id,
+        source_id,
+        event_id: eventId,
+        error: snapshotCheckError?.message ?? "not_found",
+      });
+      return NextResponse.json(
+        { error: "Snapshot created but could not be read back. Please try again.", event_id: eventId },
+        { status: 500 },
+      );
+    }
+
     await supabase.from("snapshots").update({ status: "queued" }).eq("id", snapshot_id);
 
     void import("@/lib/snapshot/runSnapshotJob")
