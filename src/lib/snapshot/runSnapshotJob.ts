@@ -20,7 +20,7 @@ export async function runSnapshotJob(snapshotId: string): Promise<void> {
     return;
   }
 
-  if (snapshot.status === "complete" || snapshot.status === "failed") {
+  if (snapshot.status === "complete" || snapshot.status === "failed" || snapshot.status === "running") {
     return;
   }
 

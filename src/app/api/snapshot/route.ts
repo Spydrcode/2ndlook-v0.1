@@ -2,11 +2,22 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { getOrCreateInstallationId } from "@/lib/installations/cookie";
-import { runDeterministicSnapshot } from "@/lib/snapshot/deterministic";
-import { resolveSnapshotMode } from "@/lib/snapshot/modeSelection";
+import { createSnapshotRecord } from "@/lib/snapshot/createSnapshot";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { logSnapshotEvent, recordSnapshotMetrics, SnapshotErrorCodes } from "@/lib/telemetry/snapshotLog";
 import type { SnapshotRequest, SnapshotResponse } from "@/types/2ndlook";
+
+function isSnapshotSchemaMismatch(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('column "status"') ||
+    lower.includes('column "input_summary"') ||
+    lower.includes('column "error"') ||
+    lower.includes('null value in column "result"') ||
+    lower.includes("snapshots_status_check") ||
+    lower.includes("snapshots_estimate_count_check")
+  );
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,102 +46,53 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Source must be bucketed before snapshot generation" }, { status: 400 });
     }
 
-    // Resolve snapshot mode (supports auto mode)
-    let mode = resolveSnapshotMode();
-    if (mode === "orchestrated" && !process.env.OPENAI_API_KEY) {
-      console.warn("[Snapshot API] Missing OPENAI_API_KEY; falling back to deterministic mode.");
-      mode = "deterministic";
-    }
-    const startTime = Date.now();
     let snapshot_id: string;
-    let fallbackUsed = false;
-    let errorCode: string | undefined;
 
-    if (mode === "orchestrated") {
-      // Try orchestrator (AI-powered)
-      try {
-        console.log("[Snapshot API] Attempting orchestrated generation:", {
+    try {
+      const created = await createSnapshotRecord({
+        installationId,
+        sourceId: source_id,
+      });
+      snapshot_id = created.snapshot_id;
+    } catch (createError) {
+      if (isSnapshotSchemaMismatch(createError)) {
+        console.warn("[Snapshot API] Snapshot schema mismatch; falling back to deterministic snapshot.", {
           source_id,
-          mode: "orchestrated",
+          error: createError instanceof Error ? createError.message : "unknown",
         });
 
-        const { runSnapshotOrchestrator } = await import("@/lib/orchestrator/runSnapshot");
-        const result = await runSnapshotOrchestrator({
-          source_id,
-          installation_id: installationId,
-        });
-
-        snapshot_id = result.snapshot_id;
-
-        console.log("[Snapshot API] Orchestrated generation successful:", {
-          snapshot_id,
-          source_id,
-        });
-      } catch (orchestratorError) {
-        // Fallback to deterministic on any orchestrator failure
-        fallbackUsed = true;
-
-        // Categorize error
-        if (orchestratorError instanceof Error) {
-          if (orchestratorError.message.includes("OpenAI")) {
-            errorCode = SnapshotErrorCodes.OPENAI;
-          } else if (orchestratorError.message.includes("schema") || orchestratorError.message.includes("validation")) {
-            errorCode = SnapshotErrorCodes.SCHEMA;
-          } else if (orchestratorError.message.includes("MCP")) {
-            errorCode = SnapshotErrorCodes.MCP;
-          } else {
-            errorCode = SnapshotErrorCodes.UNKNOWN;
-          }
-        }
-
-        console.error("[Snapshot API] Orchestrator failed, falling back to deterministic:", {
-          source_id,
-          error: orchestratorError instanceof Error ? orchestratorError.name : "Unknown",
-          errorCode,
-        });
-
+        const { runDeterministicSnapshot } = await import("@/lib/snapshot/deterministic");
         const result = await runDeterministicSnapshot({
           source_id,
           installation_id: installationId,
         });
-
         snapshot_id = result.snapshot_id;
 
-        console.log("[Snapshot API] Deterministic fallback successful:", {
-          snapshot_id,
-          source_id,
-        });
+        return NextResponse.json({ snapshot_id }, { status: 200 });
       }
-    } else {
-      // Deterministic mode (default)
-      console.log("[Snapshot API] Using deterministic generation:", {
-        source_id,
-        mode: "deterministic",
-      });
 
-      const result = await runDeterministicSnapshot({
-        source_id,
-        installation_id: installationId,
-      });
-
-      snapshot_id = result.snapshot_id;
+      throw createError;
     }
 
-    // Log telemetry
-    const duration = Date.now() - startTime;
-    logSnapshotEvent({
-      timestamp: new Date().toISOString(),
-      source_id,
-      snapshot_id,
-      mode_attempted: mode,
-      mode_used: fallbackUsed ? "deterministic" : mode,
-      fallback_used: fallbackUsed,
-      error_code: errorCode,
-      duration_ms: duration,
-    });
+    await supabase.from("snapshots").update({ status: "queued" }).eq("id", snapshot_id);
 
-    // Record metrics for auto mode
-    recordSnapshotMetrics(fallbackUsed);
+    void import("@/lib/snapshot/runSnapshotJob")
+      .then(({ runSnapshotJob }) => runSnapshotJob(snapshot_id))
+      .catch(async (jobError) => {
+        console.error("[Snapshot API] Failed to trigger snapshot job:", {
+          snapshot_id,
+          error: jobError instanceof Error ? jobError.message : "unknown",
+        });
+
+        await supabase
+          .from("snapshots")
+          .update({
+            status: "failed",
+            error: { message: jobError instanceof Error ? jobError.message : "snapshot_job_failed" },
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", snapshot_id);
+      });
 
     const response: SnapshotResponse = {
       snapshot_id,

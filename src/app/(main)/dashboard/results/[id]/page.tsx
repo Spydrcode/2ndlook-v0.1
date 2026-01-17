@@ -7,8 +7,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getInstallationId } from "@/lib/installations/cookie";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ConfidenceLevel, SnapshotOutput } from "@/types/2ndlook";
+
+import { SnapshotStatusPoller } from "./snapshot-status-poller";
 
 interface ResultsPageProps {
   params: {
@@ -43,12 +46,28 @@ function formatDate(dateString: string): string {
 export default async function ResultsPage({ params }: ResultsPageProps) {
   const supabase = createAdminClient();
   const snapshotId = params.id;
+  const installationId = await getInstallationId();
 
-  const { data: snapshot, error } = await supabase
-    .from("snapshots")
-    .select("*, sources!inner(installation_id)")
-    .eq("id", snapshotId)
-    .single();
+  if (!installationId) {
+    return (
+      <div className="flex flex-1 flex-col gap-6 p-6">
+        <div className="space-y-1">
+          <h1 className="font-semibold text-2xl tracking-tight">Snapshot not found</h1>
+          <p className="text-muted-foreground">
+            This snapshot does not exist. Try running a new snapshot from Connect.
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/dashboard/connect">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Connect
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  const { data: snapshot, error } = await supabase.from("snapshots").select("*").eq("id", snapshotId).single();
 
   if (error || !snapshot) {
     return (
@@ -65,6 +84,84 @@ export default async function ResultsPage({ params }: ResultsPageProps) {
             Back to Connect
           </Link>
         </Button>
+      </div>
+    );
+  }
+
+  const { data: source, error: sourceError } = await supabase
+    .from("sources")
+    .select("installation_id")
+    .eq("id", snapshot.source_id)
+    .single();
+
+  if (sourceError || !source || source.installation_id !== installationId) {
+    return (
+      <div className="flex flex-1 flex-col gap-6 p-6">
+        <div className="space-y-1">
+          <h1 className="font-semibold text-2xl tracking-tight">Not authorized</h1>
+          <p className="text-muted-foreground">You don’t have access to this snapshot.</p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/dashboard/connect">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Connect
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (snapshot.status === "created" || snapshot.status === "queued" || snapshot.status === "running") {
+    return (
+      <div className="flex flex-1 flex-col gap-6 p-6">
+        <div className="space-y-1">
+          <h1 className="font-semibold text-2xl tracking-tight">Snapshot running</h1>
+          <p className="text-muted-foreground">We’re generating your snapshot now. This page will update soon.</p>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Status</CardTitle>
+            <CardDescription>We’ll refresh automatically when it’s ready.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SnapshotStatusPoller snapshotId={snapshotId} initialStatus={snapshot.status} />
+          </CardContent>
+        </Card>
+        <Button asChild variant="outline">
+          <Link href="/dashboard/connect">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Connect
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (snapshot.status === "failed") {
+    const errorMessage =
+      typeof snapshot.error === "string"
+        ? snapshot.error
+        : typeof snapshot.error?.message === "string"
+          ? snapshot.error.message
+          : "Snapshot failed. Please try again.";
+
+    return (
+      <div className="flex flex-1 flex-col gap-6 p-6">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{errorMessage}</AlertDescription>
+        </Alert>
+        <div className="flex gap-3">
+          <Button asChild variant="outline">
+            <Link href="/dashboard/connect">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Connect
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/dashboard/review">Run again</Link>
+          </Button>
+        </div>
       </div>
     );
   }
