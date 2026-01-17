@@ -53,6 +53,36 @@ function isMissingScopeError(errors: unknown[] | undefined): string[] {
   return missing;
 }
 
+function getPrimaryErrorMessage(errors: unknown[] | undefined): string | null {
+  if (!errors || errors.length === 0) return null;
+  const first = errors[0];
+  if (
+    first &&
+    typeof first === "object" &&
+    "message" in first &&
+    typeof (first as { message?: unknown }).message === "string"
+  ) {
+    return (first as { message: string }).message;
+  }
+  return null;
+}
+
+function getActionHint(message: string | null): string | null {
+  if (!message) return null;
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("doesn't accept argument") ||
+    lower.includes("unknown argument") ||
+    lower.includes("unknown field")
+  ) {
+    return "schema mismatch: query/filter field not supported";
+  }
+  if (lower.includes("declared by") && lower.includes("not used")) {
+    return "query variable declared but not used";
+  }
+  return null;
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -123,6 +153,15 @@ export async function jobberGraphQL<T>(
       const missing = isMissingScopeError(json.errors);
       if (missing.length > 0) {
         throw new JobberMissingScopesError("Missing required Jobber scopes", missing);
+      }
+
+      const primaryError = getPrimaryErrorMessage(json.errors);
+      if (primaryError) {
+        throw new JobberAPIError(primaryError, {
+          responseText: text.slice(0, 2000),
+          graphqlErrors: json.errors,
+          action_hint: getActionHint(primaryError),
+        });
       }
 
       if (!json.data) {

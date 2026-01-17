@@ -394,32 +394,8 @@ export async function fetchJobsPaged(args: PageArgs): Promise<{ rows: JobRowInpu
   let totalCost = 0;
 
   while (rows.length < maxRecords && pages < (args.maxPages ?? MAX_PAGES)) {
-    const queryWithFilter = `
-      query GetJobs($after: String, $first: Int!, $since: ISO8601DateTime!) {
-        jobs(
-          first: $first
-          after: $after
-          filter: { updatedAt: { after: $since } }
-        ) {
-          pageInfo {
-            hasNextPage
-            endCursor
-          }
-          nodes {
-            id
-            createdAt
-            startAt
-            endAt
-            jobStatus
-            total
-            client { id }
-          }
-        }
-      }
-    `;
-
-    const queryNoFilter = `
-      query GetJobsNoFilter($after: String, $first: Int!) {
+    const query = `
+      query GetJobs($after: String, $first: Int!) {
         jobs(
           first: $first
           after: $after
@@ -441,66 +417,31 @@ export async function fetchJobsPaged(args: PageArgs): Promise<{ rows: JobRowInpu
       }
     `;
 
-    let jobResult: {
-      data: {
-        jobs: {
-          pageInfo: { hasNextPage: boolean; endCursor: string | null };
-          nodes: Array<{
-            id: string;
-            createdAt: string;
-            startAt?: string | null;
-            endAt?: string | null;
-            jobStatus?: string | null;
-            total?: number | string | null;
-            client?: { id?: string | null } | null;
-          }>;
-        };
-      };
-      cost?: { requested: number; max: number; available?: number };
-    } | null = null;
-
-    try {
-      jobResult = await jobberGraphQL<{
-        jobs: {
-          pageInfo: { hasNextPage: boolean; endCursor: string | null };
-          nodes: Array<{
-            id: string;
-            createdAt: string;
-            startAt?: string | null;
-            endAt?: string | null;
-            jobStatus?: string | null;
-            total?: number | string | null;
-            client?: { id?: string | null } | null;
-          }>;
-        };
-      }>(queryWithFilter, { after, first: pageSize, since: args.sinceISO }, accessToken, {
-        targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
-      });
-    } catch (err) {
-      if (err instanceof JobberAPIError && err.message.includes("updatedAt")) {
-        console.warn("[JOBBER] Jobs updatedAt filter unsupported; retrying without filter.");
-        jobResult = await jobberGraphQL<{
-          jobs: {
-            pageInfo: { hasNextPage: boolean; endCursor: string | null };
-            nodes: Array<{
-              id: string;
-              createdAt: string;
-              startAt?: string | null;
-              endAt?: string | null;
-              jobStatus?: string | null;
-              total?: number | string | null;
-              client?: { id?: string | null } | null;
-            }>;
-          };
-        }>(queryNoFilter, { after, first: pageSize }, accessToken, {
-          targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
-        });
-      } else {
-        throw err;
+    if (process.env.NODE_ENV !== "production") {
+      const forbiddenFilterFields = ["updatedAt"];
+      for (const field of forbiddenFilterFields) {
+        if (query.includes(field)) {
+          throw new JobberAPIError(`Jobs query includes forbidden filter field: ${field}`);
+        }
       }
     }
 
-    if (!jobResult) break;
+    const jobResult = await jobberGraphQL<{
+      jobs: {
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        nodes: Array<{
+          id: string;
+          createdAt: string;
+          startAt?: string | null;
+          endAt?: string | null;
+          jobStatus?: string | null;
+          total?: number | string | null;
+          client?: { id?: string | null } | null;
+        }>;
+      };
+    }>(query, { after, first: pageSize }, accessToken, {
+      targetMaxCost: args.targetMaxCost ?? TARGET_MAX_COST,
+    });
 
     const {
       data,
@@ -528,7 +469,12 @@ export async function fetchJobsPaged(args: PageArgs): Promise<{ rows: JobRowInpu
       pageSize = adjustPageSize(pageSize, cost.requested, cost.max, args.targetMaxCost);
     }
 
-    const nodes = data.jobs.nodes || [];
+    const cutoff = new Date(args.sinceISO);
+    const nodes = (data.jobs.nodes || []).filter((job) => {
+      const createdAt = new Date(job.createdAt);
+      if (Number.isNaN(createdAt.getTime())) return false;
+      return createdAt >= cutoff;
+    });
     const mapped = nodes.map(
       (job: {
         id: string;
