@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getInstallationId } from "@/lib/installations/cookie";
+import { getOrCreateInstallationId } from "@/lib/installations/cookie";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ConfidenceLevel, SnapshotOutput } from "@/types/2ndlook";
 
@@ -46,26 +46,7 @@ function formatDate(dateString: string): string {
 export default async function ResultsPage({ params }: ResultsPageProps) {
   const supabase = createAdminClient();
   const snapshotId = params.id;
-  const installationId = await getInstallationId();
-
-  if (!installationId) {
-    return (
-      <div className="flex flex-1 flex-col gap-6 p-6">
-        <div className="space-y-1">
-          <h1 className="font-semibold text-2xl tracking-tight">Snapshot not found</h1>
-          <p className="text-muted-foreground">
-            This snapshot does not exist. Try running a new snapshot from Connect.
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link href="/dashboard/connect">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Connect
-          </Link>
-        </Button>
-      </div>
-    );
-  }
+  const installationId = await getOrCreateInstallationId();
 
   const { data: snapshot, error } = await supabase.from("snapshots").select("*").eq("id", snapshotId).single();
 

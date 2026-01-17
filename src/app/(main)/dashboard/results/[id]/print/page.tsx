@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { AutoPrint } from "@/components/print/AutoPrint";
 import { Badge } from "@/components/ui/badge";
-import { getInstallationId } from "@/lib/installations/cookie";
+import { getOrCreateInstallationId } from "@/lib/installations/cookie";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ConfidenceLevel, SnapshotOutput } from "@/types/2ndlook";
 
@@ -43,21 +43,7 @@ function formatDate(dateString: string): string {
 export default async function PrintPage({ params }: PrintPageProps) {
   const supabase = createAdminClient();
   const snapshotId = params.id;
-  const installationId = await getInstallationId();
-
-  if (!installationId) {
-    return (
-      <div className="print-body">
-        <div className="no-print mb-4">
-          <Link href="/dashboard/connect" className="text-blue-600 text-sm">
-            <ArrowLeft className="mr-2 inline h-4 w-4" />
-            Back
-          </Link>
-        </div>
-        <h1>Snapshot not found</h1>
-      </div>
-    );
-  }
+  const installationId = await getOrCreateInstallationId();
 
   const { data: snapshot } = await supabase.from("snapshots").select("*").eq("id", snapshotId).single();
 
